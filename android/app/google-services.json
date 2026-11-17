@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "281461644206",
+    "project_id": "habitolivinggaurd",
+    "storage_bucket": "habitolivinggaurd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:281461644206:android:66d5632df43aa434da063f",
+        "android_client_info": {
+          "package_name": "com.anuritinnovation.habitolivinggaurd"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFmLmfmTVw7EtcHd0km6t4SYvQFqA4e78"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:281461644206:android:14529d89244fe33eda063f",
+        "android_client_info": {
+          "package_name": "com.example.habitolivinggaurd"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFmLmfmTVw7EtcHd0km6t4SYvQFqA4e78"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
