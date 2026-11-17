@@ -1,4 +1,4 @@
-package com.example.habitolivinggaurd
+package com.anuritinnovation.habitolivingguard
 
 import io.flutter.embedding.android.FlutterActivity
 
