@@ -192,10 +192,16 @@ class _GateTabState extends State<GateTab> {
   }
 
   Future<void> _openRegister(BuildContext context) async {
-    final created = await Navigator.of(context).push<bool>(
+    final name = await Navigator.of(context).push<String>(
       MaterialPageRoute(builder: (_) => const VisitorRegisterScreen()),
     );
-    if (created == true) _pull();
+    if (name == null) return;
+    // The request is in: refresh the queue immediately so the new visitor
+    // appears without a pull-to-refresh, and say so.
+    _pull();
+    if (context.mounted) {
+      showMessage(context, '$name sent — waiting on the resident to approve.');
+    }
   }
 }
 

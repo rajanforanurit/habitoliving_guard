@@ -148,8 +148,17 @@ class ApiClient {
     }
     request.headers['Accept'] = 'application/json';
     request.headers['X-File-Type'] = mimeType;
+    // The file part MUST carry its real content type. fromBytes defaults to
+    // application/octet-stream, which the backend's multer fileFilter rejects
+    // for every image — uploads would fail with "Only JPEG, PNG, WebP and PDF
+    // files are allowed".
     request.files.add(
-      http.MultipartFile.fromBytes(fieldName, bytes, filename: fileName),
+      http.MultipartFile.fromBytes(
+        fieldName,
+        bytes,
+        filename: fileName,
+        contentType: http.MediaType.parse(mimeType),
+      ),
     );
     request.fields.addAll(extra);
 
@@ -163,7 +172,12 @@ class ApiClient {
         ..headers['Accept'] = 'application/json';
       retry.headers['X-File-Type'] = mimeType;
       retry.files.add(
-        http.MultipartFile.fromBytes(fieldName, bytes, filename: fileName),
+        http.MultipartFile.fromBytes(
+          fieldName,
+          bytes,
+          filename: fileName,
+          contentType: http.MediaType.parse(mimeType),
+        ),
       );
       retry.fields.addAll(extra);
       final retried = await retry.send();

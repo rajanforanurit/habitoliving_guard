@@ -22,7 +22,9 @@ class FilesApi {
   ///
   /// `purpose` should be one of the backend `FilePurpose` values (PROFILE,
   /// VERIFICATION, LISTING, COMPLAINT, DOCUMENT, VISITOR, STAFF, INVOICE,
-  /// OTHER) so the backend can validate the type.
+  /// OTHER) so the backend can validate the type. Both purpose and visibility
+  /// travel as **query parameters** — the backend validates them from the
+  /// query (`uploadQuery`), not from multipart fields.
   Future<String> upload({
     required List<int> bytes,
     required String fileName,
@@ -31,11 +33,10 @@ class FilesApi {
     String visibility = 'PRIVATE',
   }) async {
     final data = await _api.upload(
-      '/files',
+      '/files?purpose=${Uri.encodeQueryComponent(purpose)}&visibility=${Uri.encodeQueryComponent(visibility)}',
       bytes: bytes,
       fileName: fileName,
       mimeType: mimeType,
-      extra: {'purpose': purpose, 'visibility': visibility},
     );
     final map = asMap(data);
     // The endpoint returns the created file: { id, url, ... }.

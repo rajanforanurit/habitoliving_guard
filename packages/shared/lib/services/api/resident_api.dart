@@ -445,7 +445,7 @@ class ResidentApi {
     await _api.post(
       '/user/visitors/$id/respond',
       body: {
-        'decision': approve ? 'APPROVED' : 'REJECTED',
+        'decision': approve ? 'APPROVE' : 'REJECT',
         if (reason != null && reason.isNotEmpty) 'reason': reason,
       },
     );

@@ -17,14 +17,13 @@ import 'package:habitoliving_shared/ui/widgets/primitives.dart';
 /// the flat label, pick the match. Then the visitor's name, a photo, and
 /// optionally a phone, company, purpose and vehicle number.
 ///
-/// The photo is compressed on-device (a 5 MB capture becomes well under
-/// 200 KB) before it is uploaded, so the upload stays fast even on a weak gate
-/// connection. It is required only when the society's visitor policy demands
-/// one; otherwise the guard may skip it.
+/// The photo is compressed on-device (a multi-MB capture becomes well under
+/// 200 KB) and uploaded when the request is sent, so nothing network-bound
+/// sits in the middle of the form.
 ///
 /// Registration does not admit anyone. It sends the request to the resident,
-/// who approves or refuses; the result screen says exactly that, so a guard
-/// never tells a visitor they are in before the resident agrees.
+/// who approves or refuses; this screen pops back to the gate as soon as the
+/// request is in, and the gate refreshes itself.
 class VisitorRegisterScreen extends StatefulWidget {
   const VisitorRegisterScreen({super.key});
 
@@ -45,15 +44,12 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
   Map<String, dynamic>? _flat;
   bool _searching = false;
   bool _busy = false;
+  bool _picking = false;
   String? _error;
-  String? _visitorName;
 
-  /// The picked-and-compressed photo, held as bytes so the upload can be
-  /// retried without re-opening the camera. Null until a photo is chosen.
+  /// The picked-and-compressed photo, held as bytes. Uploaded when the request
+  /// is sent — a slow gate connection never blocks the middle of the form.
   PickedFile? _photo;
-  bool _pickingPhoto = false;
-  bool _uploadingPhoto = false;
-  String? _photoFileId;
 
   @override
   void dispose() {
@@ -84,12 +80,12 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
     }
   }
 
-  /// Picks a photo, compresses it, and uploads it. Returns the file id through
-  /// [_photoFileId]; the guard can change their mind and pick again.
+  /// Picks a photo and compresses it in place. The upload happens when the
+  /// request is sent.
   Future<void> _pickPhoto(ImageSource source) async {
-    if (_pickingPhoto || _uploadingPhoto) return;
+    if (_picking || _busy) return;
     setState(() {
-      _pickingPhoto = true;
+      _picking = true;
       _error = null;
     });
     try {
@@ -98,39 +94,17 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
         maxSide: 1920,
         quality: 85,
       );
-      if (picked == null) {
-        if (mounted) setState(() => _pickingPhoto = false);
-        return;
-      }
-      // Compress to roughly 100-200 KB before upload.
+      if (picked == null) return; // the guard cancelled the picker.
+      // Compress to roughly 100-200 KB before anything touches the network.
       final compressed = await AppServices.instance.media.compressForUpload(
         picked,
       );
       if (!mounted) return;
-      setState(() {
-        _photo = compressed;
-        _pickingPhoto = false;
-        _uploadingPhoto = true;
-      });
-      final fileId = await AppServices.instance.media.upload(
-        compressed,
-        purpose: UploadPurpose.visitor,
-        // SOCIETY so the resident (not just the guard) can see the face before
-        // deciding; PRIVATE would 403 for every resident but the uploader.
-        visibility: 'SOCIETY',
-      );
-      if (!mounted) return;
-      setState(() {
-        _photoFileId = fileId;
-        _uploadingPhoto = false;
-      });
+      setState(() => _photo = compressed);
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _pickingPhoto = false;
-        _uploadingPhoto = false;
-      });
-      showMessage(context, '$e', error: true);
+      if (mounted) showMessage(context, '$e', error: true);
+    } finally {
+      if (mounted) setState(() => _picking = false);
     }
   }
 
@@ -144,20 +118,22 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
       return;
     }
     if (!(_form.currentState?.validate() ?? false)) return;
-    if (_uploadingPhoto) {
-      showMessage(
-        context,
-        'The photo is still uploading. Give it a moment.',
-        error: true,
-      );
-      return;
-    }
 
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
+      String? photoFileId;
+      if (_photo != null) {
+        photoFileId = await AppServices.instance.media.upload(
+          _photo!,
+          purpose: UploadPurpose.visitor,
+          // SOCIETY so the resident (not just the guard) can see the face
+          // before deciding; PRIVATE would 403 for every resident.
+          visibility: 'SOCIETY',
+        );
+      }
       final visitor = await AppServices.instance.guard.registerVisitor(
         name: _name.text.trim(),
         flatId: _flat!['id']?.toString() ?? '',
@@ -165,14 +141,14 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
         company: _company.text.trim(),
         purpose: _purpose.text.trim(),
         vehicleNumber: _vehicle.text.trim(),
-        photoFileId: _photoFileId,
+        photoFileId: photoFileId,
       );
       if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _visitorName = visitor.name;
-      });
       HapticFeedback.mediumImpact();
+      // Straight back to the gate: the tab refreshes itself because the pop
+      // carries the visitor's name. No intermediate "sent" page to back out
+      // of — and no dead end if the request lands while the guard watches.
+      Navigator.of(context).pop(visitor.name);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -184,17 +160,6 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_visitorName != null) {
-      return AppScaffold(
-        title: 'Visitor registered',
-        showBack: false,
-        body: _SentState(
-          name: _visitorName!,
-          onDone: () => Navigator.of(context).pop(true),
-        ),
-      );
-    }
-
     return AppScaffold(
       title: 'Register a visitor',
       subtitle: 'Walk-in entry request',
@@ -282,14 +247,10 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
             SizedBox(height: Tokens.space3),
             _PhotoField(
               photo: _photo,
-              picking: _pickingPhoto,
-              uploading: _uploadingPhoto,
+              picking: _picking,
               onCamera: () => _pickPhoto(ImageSource.camera),
               onGallery: () => _pickPhoto(ImageSource.gallery),
-              onClear: () => setState(() {
-                _photo = null;
-                _photoFileId = null;
-              }),
+              onClear: () => setState(() => _photo = null),
             ),
             SizedBox(height: Tokens.space3),
             TextFormField(
@@ -349,19 +310,26 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
 
             SizedBox(height: Tokens.space5),
             FilledButton(
-              onPressed: _busy ? null : _submit,
+              onPressed: (_busy || _picking) ? null : _submit,
               style: FilledButton.styleFrom(
                 backgroundColor: Tokens.accent,
                 minimumSize: const Size.fromHeight(Tokens.controlHeight),
               ),
               child: _busy
-                  ? SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Tokens.accentOn,
-                      ),
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Tokens.accentOn,
+                          ),
+                        ),
+                        const SizedBox(width: Tokens.space3),
+                        const Text('Sending the request'),
+                      ],
                     )
                   : const Text('Send the request'),
             ),
@@ -399,13 +367,12 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
   }
 }
 
-/// The visitor photo field: shows the picked photo, or two buttons (camera and
-/// gallery) when none is chosen yet.
+/// The visitor photo field: two buttons (camera and gallery) when no photo is
+/// chosen, and the compressed preview with a retake action once one is.
 class _PhotoField extends StatelessWidget {
   const _PhotoField({
     required this.photo,
     required this.picking,
-    required this.uploading,
     required this.onCamera,
     required this.onGallery,
     required this.onClear,
@@ -413,14 +380,13 @@ class _PhotoField extends StatelessWidget {
 
   final PickedFile? photo;
   final bool picking;
-  final bool uploading;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
   final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
-    if (uploading) {
+    if (picking) {
       return Row(
         children: [
           SizedBox(
@@ -440,7 +406,7 @@ class _PhotoField extends StatelessWidget {
           SizedBox(width: Tokens.space3),
           Expanded(
             child: Text(
-              'Uploading photo…',
+              'Getting the photo…',
               style: TextStyle(
                 fontFamily: Tokens.fontFamily,
                 fontSize: Tokens.typeSm,
@@ -496,7 +462,7 @@ class _PhotoField extends StatelessWidget {
       children: [
         Expanded(
           child: OutlinedButton.icon(
-            onPressed: picking ? null : onCamera,
+            onPressed: onCamera,
             icon: AppIcon(Icons2.camera, size: IconSize.inline),
             label: const Text('Take photo'),
             style: OutlinedButton.styleFrom(
@@ -507,7 +473,7 @@ class _PhotoField extends StatelessWidget {
         SizedBox(width: Tokens.space2),
         Expanded(
           child: OutlinedButton.icon(
-            onPressed: picking ? null : onGallery,
+            onPressed: onGallery,
             icon: AppIcon(Icons2.image, size: IconSize.inline),
             label: const Text('Gallery'),
             style: OutlinedButton.styleFrom(
@@ -566,56 +532,6 @@ class _ChosenFlat extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// Shown after the request is sent.
-class _SentState extends StatelessWidget {
-  const _SentState({required this.name, required this.onDone});
-  final String name;
-  final VoidCallback onDone;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.only(bottom: kScreenBottomPadding),
-      children: [
-        SizedBox(height: Tokens.space6),
-        AppIcon(Icons2.success, size: IconSize.empty, color: Tokens.accent),
-        SizedBox(height: Tokens.space4),
-        Text(
-          'Request sent',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontFamily: Tokens.fontFamily,
-            fontSize: Tokens.typeLg,
-            fontWeight: FontWeight.w600,
-            color: Tokens.ink,
-          ),
-        ),
-        SizedBox(height: Tokens.space2),
-        Text(
-          '$name is not cleared yet. The resident has been asked to approve, and the visitor '
-          'waits at the gate until they answer.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontFamily: Tokens.fontFamily,
-            fontSize: Tokens.typeSm,
-            height: 1.5,
-            color: Tokens.inkMuted,
-          ),
-        ),
-        const SizedBox(height: Tokens.space6),
-        FilledButton(
-          onPressed: onDone,
-          style: FilledButton.styleFrom(
-            backgroundColor: Tokens.accent,
-            minimumSize: const Size.fromHeight(Tokens.controlHeight),
-          ),
-          child: const Text('Back to the gate'),
-        ),
-      ],
     );
   }
 }
