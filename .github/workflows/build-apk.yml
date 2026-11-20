@@ -40,21 +40,12 @@ jobs:
           channel: stable
           cache: true
 
-      # AGP downloads the NDK on every run because the runner image does not
-      # ship the version flutter.ndkVersion asks for. Cache it — plus CMake —
-      # so that download happens at most once.
-      - name: Cache Android NDK & CMake
-        uses: actions/cache@v4
-        with:
-          path: |
-            /usr/local/lib/android/sdk/ndk
-            /usr/local/lib/android/sdk/cmake
-          key: ${{ runner.os }}-android-ndk-cmake-${{ env.FLUTTER_VERSION }}
-          restore-keys: |
-            ${{ runner.os }}-android-ndk-cmake-
-
+      # NOTE: an actions/cache step over /usr/local/lib/android/sdk/ndk was tried
+      # here and removed on purpose: the NDK is ~2.5 GB, and tarring+uploading it
+      # took 6-16 min per cold run to save a ~40 s download. Net loss.
       - name: Make SDK dirs writable
-        # Cache entries are restored root-owned; AGP needs to write into them.
+        # Root-owned image dirs; AGP needs to write into them when it installs
+        # the NDK/CMake for the first time.
         run: |
           for d in /usr/local/lib/android/sdk/ndk /usr/local/lib/android/sdk/cmake; do
             if [ -d "$d" ] && [ ! -w "$d" ]; then sudo chown -R "$USER:$USER" "$d"; fi
