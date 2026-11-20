@@ -1,17 +1,15 @@
-name: Build APK
-
-# Builds the release APK on GitHub's runners so nobody has to build locally
-# on a low-RAM machine. The APK lands on the run page under "Artifacts" and
-# is signed with the debug key — fine for testing, not for the Play Store.
+name: Build & Release APK
 
 on:
-  workflow_dispatch:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -26,13 +24,11 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Build release APK
-        run: |
-          flutter pub get
-          flutter build apk --release
+      - run: flutter pub get
+      - run: flutter build apk --release
 
-      - uses: actions/upload-artifact@v4
+      - uses: softprops/action-gh-release@v2
         with:
-          name: habitoliving-guard-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
-          retention-days: 30
+          tag_name: build-${{ github.run_number }}
+          name: Build ${{ github.run_number }}
+          files: build/app/outputs/flutter-apk/app-release.apk
