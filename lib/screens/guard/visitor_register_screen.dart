@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart' hide PickedFile;
 
 import '../../app.dart';
 import 'package:habitoliving_shared/services/app_services.dart';
+import 'package:habitoliving_shared/services/media_service.dart';
 import 'package:habitoliving_shared/ui/icons.dart';
 import 'package:habitoliving_shared/ui/spacing.dart';
 import 'package:habitoliving_shared/ui/tokens.dart';
@@ -12,8 +14,13 @@ import 'package:habitoliving_shared/ui/widgets/primitives.dart';
 /// Register a walk-in visitor at the gate.
 ///
 /// The guard cannot invent a flat, so the destination is a lookup: type part of
-/// the flat label, pick the match. Then the visitor's name, and optionally a
-/// phone, purpose and vehicle number.
+/// the flat label, pick the match. Then the visitor's name, a photo, and
+/// optionally a phone, company, purpose and vehicle number.
+///
+/// The photo is compressed on-device (a 5 MB capture becomes well under
+/// 200 KB) before it is uploaded, so the upload stays fast even on a weak gate
+/// connection. It is required only when the society's visitor policy demands
+/// one; otherwise the guard may skip it.
 ///
 /// Registration does not admit anyone. It sends the request to the resident,
 /// who approves or refuses; the result screen says exactly that, so a guard
@@ -29,6 +36,7 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
   final _form = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _phone = TextEditingController();
+  final _company = TextEditingController();
   final _purpose = TextEditingController();
   final _vehicle = TextEditingController();
   final _flatQuery = TextEditingController();
@@ -40,10 +48,18 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
   String? _error;
   String? _visitorName;
 
+  /// The picked-and-compressed photo, held as bytes so the upload can be
+  /// retried without re-opening the camera. Null until a photo is chosen.
+  PickedFile? _photo;
+  bool _pickingPhoto = false;
+  bool _uploadingPhoto = false;
+  String? _photoFileId;
+
   @override
   void dispose() {
     _name.dispose();
     _phone.dispose();
+    _company.dispose();
     _purpose.dispose();
     _vehicle.dispose();
     _flatQuery.dispose();
@@ -68,6 +84,56 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
     }
   }
 
+  /// Picks a photo, compresses it, and uploads it. Returns the file id through
+  /// [_photoFileId]; the guard can change their mind and pick again.
+  Future<void> _pickPhoto(ImageSource source) async {
+    if (_pickingPhoto || _uploadingPhoto) return;
+    setState(() {
+      _pickingPhoto = true;
+      _error = null;
+    });
+    try {
+      final picked = await AppServices.instance.media.fromCameraOrGallery(
+        source,
+        maxSide: 1920,
+        quality: 85,
+      );
+      if (picked == null) {
+        if (mounted) setState(() => _pickingPhoto = false);
+        return;
+      }
+      // Compress to roughly 100-200 KB before upload.
+      final compressed = await AppServices.instance.media.compressForUpload(
+        picked,
+      );
+      if (!mounted) return;
+      setState(() {
+        _photo = compressed;
+        _pickingPhoto = false;
+        _uploadingPhoto = true;
+      });
+      final fileId = await AppServices.instance.media.upload(
+        compressed,
+        purpose: UploadPurpose.visitor,
+        // SOCIETY so the resident (not just the guard) can see the face before
+        // deciding; PRIVATE would 403 for every resident but the uploader.
+        visibility: 'SOCIETY',
+      );
+      if (!mounted) return;
+      setState(() {
+        _photoFileId = fileId;
+        _uploadingPhoto = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _pickingPhoto = false;
+        _uploadingPhoto = false;
+      });
+      showMessage(context, '$e', error: true);
+    }
+  }
+
   Future<void> _submit() async {
     if (_flat == null) {
       showMessage(
@@ -78,6 +144,14 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
       return;
     }
     if (!(_form.currentState?.validate() ?? false)) return;
+    if (_uploadingPhoto) {
+      showMessage(
+        context,
+        'The photo is still uploading. Give it a moment.',
+        error: true,
+      );
+      return;
+    }
 
     setState(() {
       _busy = true;
@@ -88,8 +162,10 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
         name: _name.text.trim(),
         flatId: _flat!['id']?.toString() ?? '',
         phone: _phone.text.trim(),
+        company: _company.text.trim(),
         purpose: _purpose.text.trim(),
         vehicleNumber: _vehicle.text.trim(),
+        photoFileId: _photoFileId,
       );
       if (!mounted) return;
       setState(() {
@@ -204,12 +280,33 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
               ),
             ),
             SizedBox(height: Tokens.space3),
+            _PhotoField(
+              photo: _photo,
+              picking: _pickingPhoto,
+              uploading: _uploadingPhoto,
+              onCamera: () => _pickPhoto(ImageSource.camera),
+              onGallery: () => _pickPhoto(ImageSource.gallery),
+              onClear: () => setState(() {
+                _photo = null;
+                _photoFileId = null;
+              }),
+            ),
+            SizedBox(height: Tokens.space3),
             TextFormField(
               controller: _phone,
               keyboardType: TextInputType.phone,
               decoration: const InputDecoration(
                 labelText: 'Phone (optional)',
                 prefixIcon: AppIcon(Icons2.phone, size: IconSize.inline),
+              ),
+            ),
+            SizedBox(height: Tokens.space3),
+            TextFormField(
+              controller: _company,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Company (optional)',
+                prefixIcon: AppIcon(Icons2.property, size: IconSize.inline),
               ),
             ),
             SizedBox(height: Tokens.space3),
@@ -299,6 +396,127 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
       if (flat['residentName'] is String) flat['residentName'] as String,
     ];
     return parts.isEmpty ? null : parts.join(' · ');
+  }
+}
+
+/// The visitor photo field: shows the picked photo, or two buttons (camera and
+/// gallery) when none is chosen yet.
+class _PhotoField extends StatelessWidget {
+  const _PhotoField({
+    required this.photo,
+    required this.picking,
+    required this.uploading,
+    required this.onCamera,
+    required this.onGallery,
+    required this.onClear,
+  });
+
+  final PickedFile? photo;
+  final bool picking;
+  final bool uploading;
+  final VoidCallback onCamera;
+  final VoidCallback onGallery;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    if (uploading) {
+      return Row(
+        children: [
+          SizedBox(
+            width: 56,
+            height: 56,
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Tokens.accent,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: Tokens.space3),
+          Expanded(
+            child: Text(
+              'Uploading photo…',
+              style: TextStyle(
+                fontFamily: Tokens.fontFamily,
+                fontSize: Tokens.typeSm,
+                color: Tokens.inkMuted,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+    if (photo != null) {
+      return Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(Tokens.radiusSm),
+            child: Image.memory(
+              Uint8List.fromList(photo!.bytes),
+              width: 56,
+              height: 56,
+              fit: BoxFit.cover,
+            ),
+          ),
+          SizedBox(width: Tokens.space3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Photo attached',
+                  style: TextStyle(
+                    fontFamily: Tokens.fontFamily,
+                    fontSize: Tokens.typeSm,
+                    fontWeight: FontWeight.w600,
+                    color: Tokens.ink,
+                  ),
+                ),
+                Text(
+                  '${(photo!.sizeBytes / 1024).round()} KB',
+                  style: TextStyle(
+                    fontFamily: Tokens.fontFamily,
+                    fontSize: Tokens.typeXs,
+                    color: Tokens.inkMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(onPressed: onClear, child: const Text('Retake')),
+        ],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: picking ? null : onCamera,
+            icon: AppIcon(Icons2.camera, size: IconSize.inline),
+            label: const Text('Take photo'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(42),
+            ),
+          ),
+        ),
+        SizedBox(width: Tokens.space2),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: picking ? null : onGallery,
+            icon: AppIcon(Icons2.image, size: IconSize.inline),
+            label: const Text('Gallery'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(42),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 

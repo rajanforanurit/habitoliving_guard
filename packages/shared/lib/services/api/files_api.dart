@@ -28,13 +28,14 @@ class FilesApi {
     required String fileName,
     required String purpose,
     String mimeType = 'application/octet-stream',
+    String visibility = 'PRIVATE',
   }) async {
     final data = await _api.upload(
       '/files',
       bytes: bytes,
       fileName: fileName,
       mimeType: mimeType,
-      extra: {'purpose': purpose},
+      extra: {'purpose': purpose, 'visibility': visibility},
     );
     final map = asMap(data);
     // The endpoint returns the created file: { id, url, ... }.

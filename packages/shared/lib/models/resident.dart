@@ -300,6 +300,8 @@ class Visitor {
     this.checkedOutAt,
     this.passCode,
     this.vehicleNumber,
+    this.company,
+    this.photoFileId,
   });
 
   factory Visitor.fromJson(Map<String, dynamic> json) {
@@ -321,6 +323,10 @@ class Visitor {
       checkedOutAt: asDateOrNull(json['checkedOutAt']),
       passCode: asStringOrNull(json['passCode'] ?? json['code']),
       vehicleNumber: asStringOrNull(json['vehicleNumber']),
+      company: asStringOrNull(json['company']),
+      photoFileId: asStringOrNull(
+        json['photoFileId'] ?? json['photo'] ?? json['photoId'],
+      ),
     );
   }
 
@@ -336,6 +342,8 @@ class Visitor {
   final DateTime? checkedOutAt;
   final String? passCode;
   final String? vehicleNumber;
+  final String? company;
+  final String? photoFileId;
 
   bool get isWaiting => status == VisitorStatusValue.pendingApproval;
   bool get isOnPremises => status == VisitorStatusValue.checkedIn;

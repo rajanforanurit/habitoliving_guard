@@ -9,6 +9,7 @@ import 'package:habitoliving_shared/services/socket_service.dart';
 import 'package:habitoliving_shared/ui/icons.dart';
 import 'package:habitoliving_shared/ui/tokens.dart';
 import 'package:habitoliving_shared/ui/widgets/app_scaffold.dart';
+import 'package:habitoliving_shared/ui/widgets/authed_image.dart';
 import 'package:habitoliving_shared/ui/widgets/primitives.dart';
 import 'package:habitoliving_shared/ui/widgets/states.dart';
 import 'package:habitoliving_shared/ui/widgets/status.dart';
@@ -336,9 +337,19 @@ class _QueuePanel extends StatelessWidget {
             title: v.name,
             subtitle: [
               if (v.flatLabel != null) v.flatLabel!,
+              if (v.company != null) v.company!,
               if (v.purpose != null) v.purpose!,
             ].join(' · '),
-            leading: const AppIcon(Icons2.visitors, size: IconSize.row),
+            leading: v.photoFileId != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(Tokens.radiusSm),
+                    child: AuthedImage(
+                      fileId: v.photoFileId!,
+                      width: 40,
+                      height: 40,
+                    ),
+                  )
+                : const AppIcon(Icons2.visitors, size: IconSize.row),
             onTap: () => _openVisitor(context, v),
           ),
         ),
@@ -564,6 +575,18 @@ class _VisitorActions extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (visitor.photoFileId != null) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(Tokens.radiusMd),
+                child: AuthedImage(
+                  fileId: visitor.photoFileId!,
+                  width: double.infinity,
+                  height: 180,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              SizedBox(height: Tokens.space4),
+            ],
             Text(
               visitor.name,
               style: TextStyle(
@@ -577,6 +600,7 @@ class _VisitorActions extends StatelessWidget {
             Text(
               [
                 if (visitor.flatLabel != null) visitor.flatLabel!,
+                if (visitor.company != null) visitor.company!,
                 if (visitor.phone != null) Fmt.phone(visitor.phone),
                 visitor.type,
               ].join(' · '),

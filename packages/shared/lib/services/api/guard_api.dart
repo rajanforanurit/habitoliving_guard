@@ -82,7 +82,9 @@ class GuardApi {
     required String flatId,
     String? phone,
     String? purpose,
+    String? company,
     String? vehicleNumber,
+    String? photoFileId,
   }) async {
     final data = await _api.post(
       '/guard/visitors',
@@ -91,8 +93,11 @@ class GuardApi {
         'flatId': flatId,
         if (phone != null && phone.isNotEmpty) 'phone': phone,
         if (purpose != null && purpose.isNotEmpty) 'purpose': purpose,
+        if (company != null && company.isNotEmpty) 'company': company,
         if (vehicleNumber != null && vehicleNumber.isNotEmpty)
           'vehicleNumber': vehicleNumber,
+        if (photoFileId != null && photoFileId.isNotEmpty)
+          'photoFileId': photoFileId,
       },
     );
     return Visitor.fromJson(reqMap(data, field: 'visitor'));

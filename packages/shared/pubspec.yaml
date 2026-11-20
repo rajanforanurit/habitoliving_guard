@@ -24,6 +24,9 @@ dependencies:
   # --- Media: camera, image picker, document/file upload --------------------
   image_picker: ^1.1.2
   file_picker: ^10.1.2
+  # Camera/gallery captures are compressed before upload so a 5 MB photo
+  # becomes ~100 KB without visible quality loss.
+  flutter_image_compress: ^2.3.0
 
   # --- Push notifications (FCM on Android, APNs on iOS via FCM) ------------
   firebase_core: ^3.6.0

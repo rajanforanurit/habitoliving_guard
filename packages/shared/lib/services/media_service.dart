@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'api/files_api.dart';
@@ -74,6 +75,16 @@ class MediaService {
 
   final ImagePicker _picker = ImagePicker();
 
+  /// Picks an image from the given [source] (camera or gallery) and returns
+  /// the picked file, or null when the user cancels.
+  Future<PickedFile?> fromCameraOrGallery(
+    ImageSource source, {
+    int maxSide = 1920,
+    int quality = 85,
+  }) => source == ImageSource.camera
+      ? fromCamera(maxSide: maxSide, quality: quality)
+      : fromGallery(maxSide: maxSide, quality: quality);
+
   /// Picks an image from the camera.
   ///
   /// Returns null when the user cancels the camera. Throws [MediaException]
@@ -92,6 +103,62 @@ class MediaService {
     }
     if (shot == null) return null;
     return _readImage(shot);
+  }
+
+  /// Compresses an already-picked image to roughly 100 KB before upload.
+  ///
+  /// Camera/gallery picks can be several megabytes; the backend caps uploads
+  /// at 5 MB and a visitor photo does not need more than a thumbnail's worth
+  /// of detail. This downsizes the longest side to [maxSide] and lowers
+  /// quality until the file is at or under [targetBytes], falling back to the
+  /// smallest result if even that is larger.
+  ///
+  /// Returns the original [PickedFile] untouched when it is already small
+  /// enough, so a tiny image is never re-encoded.
+  Future<PickedFile> compressForUpload(
+    PickedFile file, {
+    int maxSide = 1280,
+    int targetBytes = 150 * 1024,
+    int minQuality = 40,
+  }) async {
+    if (file.sizeBytes <= targetBytes) return file;
+
+    int quality = 85;
+    Uint8List? best;
+    int bestLen = 0;
+
+    while (quality >= minQuality) {
+      final out = await FlutterImageCompress.compressWithList(
+        file.bytes,
+        minWidth: maxSide,
+        minHeight: maxSide,
+        quality: quality,
+        format: CompressFormat.jpeg,
+        rotate: 0,
+      );
+      if (out.isEmpty) break;
+      best = out;
+      bestLen = out.length;
+      if (bestLen <= targetBytes) break;
+      quality -= 15;
+    }
+
+    if (best == null || bestLen >= file.sizeBytes) return file;
+    // Even the smallest pass may be over target for pathological inputs; it
+    // is still far smaller than the original, so send it rather than fail.
+    final name = _jpegName(file.name);
+    return PickedFile(
+      name: name,
+      bytes: best,
+      mimeType: 'image/jpeg',
+      sizeBytes: bestLen,
+    );
+  }
+
+  static String _jpegName(String name) {
+    final dot = name.lastIndexOf('.');
+    final stem = dot == -1 ? name : name.substring(0, dot);
+    return '$stem.jpg';
   }
 
   /// Picks an image from the gallery (a single image).
@@ -183,9 +250,15 @@ class MediaService {
   }
 
   /// Uploads [file] and returns the backend file id.
+  ///
+  /// [visibility] controls who may read the stored file: 'PRIVATE' (default)
+  /// is visible to the uploader and society admins only, while 'SOCIETY'
+  /// makes it readable by every member of the society. Visitor photos use
+  /// 'SOCIETY' so the resident can see the face before approving.
   Future<String> upload(
     PickedFile file, {
     required UploadPurpose purpose,
+    String visibility = 'PRIVATE',
   }) async {
     if (file.tooLarge) {
       throw MediaException(
@@ -198,6 +271,7 @@ class MediaService {
       fileName: file.name,
       purpose: purpose.wire,
       mimeType: file.mimeType,
+      visibility: visibility,
     );
   }
 
