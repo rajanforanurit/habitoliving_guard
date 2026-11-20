@@ -140,6 +140,11 @@ class _GateTabState extends State<GateTab> {
       onRefresh: _pull,
       actions: [
         HeaderAction(
+          icon: Icons2.visitors,
+          tooltip: 'Register a visitor',
+          onPressed: () => _openRegister(context),
+        ),
+        HeaderAction(
           icon: Icons2.scan,
           tooltip: 'Verify a pass',
           onPressed: () => Navigator.of(
