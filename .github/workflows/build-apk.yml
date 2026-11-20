@@ -5,30 +5,80 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Single source of truth for the Flutter version (used by the action + cache keys).
+env:
+  FLUTTER_VERSION: "3.47.9"
+
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Free disk space
+        # The runner runs out of space while saving caches (the NDK alone is
+        # ~2.5 GB unpacked). Drop toolchains this job never uses.
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost \
+                      /opt/hostedtoolcache/CodeQL /usr/local/lib/node_modules
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          sudo apt-get clean
+          df -h /
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+          # Caches ~/.gradle/caches (dependencies + build-cache) and the wrapper.
+          cache: 'gradle'
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.47.9
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
-      - run: flutter pub get
-      - run: flutter build apk --release
+      # AGP downloads the NDK on every run because the runner image does not
+      # ship the version flutter.ndkVersion asks for. Cache it — plus CMake —
+      # so that download happens at most once.
+      - name: Cache Android NDK & CMake
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/ndk
+            /usr/local/lib/android/sdk/cmake
+          key: ${{ runner.os }}-android-ndk-cmake-${{ env.FLUTTER_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-android-ndk-cmake-
 
-      - uses: softprops/action-gh-release@v2
+      - name: Make SDK dirs writable
+        # Cache entries are restored root-owned; AGP needs to write into them.
+        run: |
+          for d in /usr/local/lib/android/sdk/ndk /usr/local/lib/android/sdk/cmake; do
+            if [ -d "$d" ] && [ ! -w "$d" ]; then sudo chown -R "$USER:$USER" "$d"; fi
+          done
+
+      - run: flutter pub get
+
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      - name: Rename APK
+        run: mv build/app/outputs/flutter-apk/app-debug.apk HabitoGuard-debug.apk
+
+      - run: ls -lh HabitoGuard-debug.apk
+
+      - name: Publish debug build to GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Build ${{ github.run_number }}
-          files: build/app/outputs/flutter-apk/app-release.apk
+          name: HabitoGuard-debug (build ${{ github.run_number }})
+          body: |
+            Debug APK — install directly on an Android device.
+
+            - Package: `com.anuritinnovation.habitolivinggaurd`
+            - Build type: **debug** (signed with the Android debug keystore)
+            - Commit: `${{ github.sha }}`
+          files: HabitoGuard-debug.apk

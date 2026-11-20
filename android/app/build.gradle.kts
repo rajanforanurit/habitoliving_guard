@@ -42,6 +42,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Debug is the build type CI publishes (.github/workflows/build-apk.yml).
+            // It is signed with the Android debug keystore, so it installs on a
+            // device straight from the GitHub release — no keystore secrets.
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
