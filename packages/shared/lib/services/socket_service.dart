@@ -28,6 +28,10 @@ class Events {
   static const notification = 'notification:new';
   static const visitorArrived = 'visitor:arrived';
   static const visitorDecision = 'visitor:decision';
+  static const visitorEntered = 'visitor:entered';
+  static const visitorExited = 'visitor:exited';
+  static const visitorDenied = 'visitor:denied';
+  static const visitorOverstay = 'visitor:overstay';
   static const deliveryArrived = 'delivery:arrived';
   static const deliveryDecision = 'delivery:decision';
   static const chatMessage = 'chat:message';
@@ -37,12 +41,29 @@ class Events {
   static const paymentSuccess = 'payment:success';
   static const noticePublished = 'notice:published';
   static const bookingUpdated = 'booking:updated';
+  static const emergencyUpdated = 'emergency:updated';
+  static const emergencyContactsChanged = 'emergency:contacts-changed';
+  static const approvalNew = 'approval:new';
+  static const helpdeskChanged = 'helpdesk:changed';
+  static const societyUpdated = 'society:updated';
+  static const propertyInfoChanged = 'society:property-info-changed';
+  static const callIncoming = 'call:incoming';
+  static const callAccepted = 'call:accepted';
+  static const callRejected = 'call:rejected';
+  static const callCancelled = 'call:cancelled';
+  static const callEnded = 'call:ended';
+  static const callMissed = 'call:missed';
+  static const callSignal = 'call:signal';
 
   /// Events a screen should treat as "something changed, reload your list".
   static const refreshHints = {
     notification,
     visitorArrived,
     visitorDecision,
+    visitorEntered,
+    visitorExited,
+    visitorDenied,
+    visitorOverstay,
     deliveryArrived,
     deliveryDecision,
     approvalUpdated,
@@ -50,6 +71,12 @@ class Events {
     paymentSuccess,
     noticePublished,
     bookingUpdated,
+    emergencyUpdated,
+    emergencyContactsChanged,
+    approvalNew,
+    helpdeskChanged,
+    societyUpdated,
+    propertyInfoChanged,
   };
 }
 
@@ -136,6 +163,15 @@ class SocketService {
     _socket = socket;
   }
 
+  /// Sends an event to the server (used for WebRTC call signaling).
+  /// Returns false when the socket is not connected.
+  bool emit(String event, Map<String, dynamic> data) {
+    final socket = _socket;
+    if (socket == null || !socket.connected) return false;
+    socket.emit(event, data);
+    return true;
+  }
+
   /// Re-handshakes after a token refresh. Safe to call often.
   void refreshToken(String? accessToken) {
     if (accessToken == null || accessToken.isEmpty) return;
@@ -177,6 +213,10 @@ class SocketService {
     Events.notification,
     Events.visitorArrived,
     Events.visitorDecision,
+    Events.visitorEntered,
+    Events.visitorExited,
+    Events.visitorDenied,
+    Events.visitorOverstay,
     Events.deliveryArrived,
     Events.deliveryDecision,
     Events.chatMessage,
@@ -186,6 +226,19 @@ class SocketService {
     Events.paymentSuccess,
     Events.noticePublished,
     Events.bookingUpdated,
+    Events.emergencyUpdated,
+    Events.emergencyContactsChanged,
+    Events.approvalNew,
+    Events.helpdeskChanged,
+    Events.societyUpdated,
+    Events.propertyInfoChanged,
+    Events.callIncoming,
+    Events.callAccepted,
+    Events.callRejected,
+    Events.callCancelled,
+    Events.callEnded,
+    Events.callMissed,
+    Events.callSignal,
     'notification:flat',
     'notification:admin',
     'notification:society',

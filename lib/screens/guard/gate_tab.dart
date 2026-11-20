@@ -5,6 +5,7 @@ import 'package:habitoliving_shared/models/admin.dart';
 import 'package:habitoliving_shared/models/resident.dart';
 import 'package:habitoliving_shared/services/app_services.dart';
 import 'package:habitoliving_shared/services/format.dart';
+import 'package:habitoliving_shared/services/socket_service.dart';
 import 'package:habitoliving_shared/ui/icons.dart';
 import 'package:habitoliving_shared/ui/tokens.dart';
 import 'package:habitoliving_shared/ui/widgets/app_scaffold.dart';
@@ -37,10 +38,68 @@ class _GateTabState extends State<GateTab> {
   late Future<List<EmergencyAlert>> _alerts;
   late Future<List<ExpectedHelper>> _helpers;
 
+  final List<void Function()> _unsubscribers = [];
+
   @override
   void initState() {
     super.initState();
     _refresh();
+    // The resident's decision lands here the instant it is made. The queue
+    // reloads and the guard sees a clear "allow / do not allow" banner, so they
+    // never have to guess whether to open the gate.
+    final socket = AppServices.instance.socket;
+    _unsubscribers.add(socket.on(Events.visitorDecision, _onDecision));
+    for (final e in const [
+      Events.visitorArrived,
+      Events.visitorEntered,
+      Events.visitorExited,
+      Events.visitorDenied,
+      Events.visitorOverstay,
+    ]) {
+      _unsubscribers.add(socket.on(e, (_) {
+        if (mounted) _refresh();
+      }));
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final u in _unsubscribers) {
+      u();
+    }
+    super.dispose();
+  }
+
+  var _lastDecision = '';
+
+  void _onDecision(RealtimeEvent event) {
+    if (!mounted) return;
+    _refresh();
+    final map = event.data;
+    // The same decision can arrive twice (socket room + push fan-out); show once.
+    final key = '${map['visitorId']}:${map['decision']}';
+    if (key == _lastDecision) return;
+    _lastDecision = key;
+    final approved = '${map['decision']}'.toUpperCase() == 'APPROVE';
+    final name = '${map['name'] ?? 'Visitor'}';
+    final flat = '${map['flatLabel'] ?? 'the flat'}';
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(approved ? 'Approved — allow entry' : 'Declined — do not allow'),
+        content: Text(
+          approved
+              ? '$flat approved $name. Record the entry when they walk in.'
+              : '$flat declined $name. Do not let them in.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _refresh() {
