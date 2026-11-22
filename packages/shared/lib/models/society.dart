@@ -81,6 +81,95 @@ class Tower {
   final int flats;
 }
 
+/// The guard-facing view of the society property layout.
+///
+/// Backed by `GET /guard/society-info`. The directory carries unit IDs and
+/// labels. Older servers provide layout labels in `propertyDetails`.
+class SocietyPropertyInfo {
+  const SocietyPropertyInfo({
+    required this.societyId,
+    required this.societyName,
+    this.towers = const [],
+    this.houses = const [],
+    this.flatIds = const {},
+  });
+
+  factory SocietyPropertyInfo.fromJson(Map<String, dynamic> json) {
+    final directory = json['gateDirectory'];
+    if (directory is List) {
+      final flatIds = <String, String>{};
+      final towers = <TowerLayout>[];
+      for (final group in asMapList(directory)) {
+        final labels = <String>[];
+        for (final flat in asMapList(group['flats'])) {
+          final label = asString(flat['label']);
+          final id = asString(flat['id']);
+          if (label.isEmpty || id.isEmpty) continue;
+          labels.add(label);
+          flatIds[label] = id;
+        }
+        if (labels.isNotEmpty) {
+          towers.add(TowerLayout(name: asString(group['name']), flats: labels));
+        }
+      }
+      return SocietyPropertyInfo(
+        societyId: asString(json['societyId']),
+        societyName: asString(json['societyName'], fallback: 'Society'),
+        towers: towers,
+        flatIds: flatIds,
+      );
+    }
+    final details = asMapOrNull(json['propertyDetails']);
+    final towers = asMapList(details?['towers'])
+        .map(
+          (tower) => TowerLayout(
+            name: asString(tower['name'], fallback: 'Tower'),
+            flats: asList(tower['flats'])
+                .map((flat) => asString(flat))
+                .where((flat) => flat.trim().isNotEmpty)
+                .toList(growable: false),
+          ),
+        )
+        .where((tower) => tower.flats.isNotEmpty)
+        .toList(growable: false);
+    final singleFamily = asMapOrNull(details?['singleFamily']);
+    final houses = asList(singleFamily?['houses'])
+        .map((house) => asString(house))
+        .where((house) => house.trim().isNotEmpty)
+        .toList(growable: false);
+    return SocietyPropertyInfo(
+      societyId: asString(json['societyId']),
+      societyName: asString(json['societyName'], fallback: 'Society'),
+      towers: towers,
+      houses: houses,
+    );
+  }
+
+  final String societyId;
+  final String societyName;
+  final List<TowerLayout> towers;
+  final Map<String, String> flatIds;
+
+  /// Single-family societies use named houses instead of towers/flats.
+  final List<String> houses;
+
+  /// The selector's input shape: tower name to flat labels.
+  Map<String, List<String>> get flatsByTower => {
+    for (final tower in towers) tower.name: tower.flats,
+    if (towers.isEmpty && houses.isNotEmpty) 'Houses': houses,
+  };
+
+  bool get isEmpty => towers.isEmpty && houses.isEmpty;
+}
+
+/// A tower and the flat labels inside it, as configured by the super admin.
+class TowerLayout {
+  const TowerLayout({required this.name, this.flats = const []});
+
+  final String name;
+  final List<String> flats;
+}
+
 class Floor {
   const Floor({
     required this.id,

@@ -91,10 +91,11 @@ class _NotificationPreferencesScreenState
 
   Future<void> _load() async {
     try {
-      final profile = await AppServices.instance.resident.profile();
+      final profile = await AppServices.instance.guard.profile();
       final stored = asMapOrNull(profile['notificationPrefs']);
       if (!mounted) return;
       setState(() {
+        _error = null;
         if (stored != null) {
           for (final entry in stored.entries) {
             if (_prefs.containsKey(entry.key)) {
@@ -119,7 +120,7 @@ class _NotificationPreferencesScreenState
       _error = null;
     });
     try {
-      await AppServices.instance.resident.saveNotificationPreferences(
+      await AppServices.instance.guard.saveNotificationPreferences(
         Map<String, bool>.from(_prefs),
       );
       if (!mounted) return;

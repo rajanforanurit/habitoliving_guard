@@ -54,7 +54,7 @@ class _Wordmark extends StatelessWidget {
             'H',
             style: TextStyle(
               fontFamily: Tokens.fontFamilyFigure,
-              fontSize: 28,
+              fontSize: 25.8,
               fontWeight: FontWeight.w700,
               color: Tokens.accentOn,
             ),

@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 
 import '../models/user.dart';
 import 'api_client.dart';
+import 'api/calls_api.dart';
+import 'call_service.dart';
 import 'api/admin_api.dart';
 import 'api/files_api.dart';
 import 'media_service.dart';
@@ -31,6 +33,8 @@ class AppServices {
 
   late final ResidentApi resident = ResidentApi(api);
   late final GuardApi guard = GuardApi(api);
+  late final CallsApi callApi = CallsApi(api);
+  late final CallService calls = CallService(callApi, socket);
   late final AdminApi admin = AdminApi(api);
   late final SuperAdminApi superAdmin = SuperAdminApi(api);
   late final FilesApi files = FilesApi(api);
@@ -61,6 +65,7 @@ class AppServices {
 
   /// Drops the session and closes the socket. Used on logout.
   void detachSession() {
+    calls.reset();
     session.clear();
     socket.disconnect();
   }

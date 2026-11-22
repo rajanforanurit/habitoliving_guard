@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../app.dart';
 import 'package:habitoliving_shared/models/resident.dart';
@@ -9,7 +10,7 @@ import 'package:habitoliving_shared/ui/tokens.dart';
 import 'package:habitoliving_shared/ui/widgets/app_scaffold.dart';
 import 'package:habitoliving_shared/ui/widgets/status.dart';
 import '../widgets/paged_list.dart';
-import 'delivery_register_screen.dart';
+import 'gate_flows.dart';
 
 /// The guard's delivery desk.
 ///
@@ -36,6 +37,7 @@ class _DeliveriesTabState extends State<DeliveriesTab> {
     ('COLLECTED', 'Collected'),
     ('ENTERED', 'Inside'),
     ('EXITED', 'Exited'),
+    ('REJECTED', 'Rejected'),
   ];
 
   int _tick = 0;
@@ -56,10 +58,8 @@ class _DeliveriesTabState extends State<DeliveriesTab> {
       subtitle: 'Gate register',
       floatingAction: FloatingActionButton.extended(
         onPressed: () async {
-          final created = await Navigator.of(context).push<bool>(
-            MaterialPageRoute(builder: (_) => const DeliveryRegisterScreen()),
-          );
-          if (created == true) setState(() => _tick++);
+          final created = await openRegisterDelivery(context, onChanged: () {});
+          if (mounted && created != null) setState(() => _tick++);
         },
         backgroundColor: Tokens.accent,
         foregroundColor: Tokens.accentOn,
@@ -105,6 +105,9 @@ class _DeliveriesTabState extends State<DeliveriesTab> {
               // Keyed on the filter and the refresh tick, so a new filter
               // refetches from page 1 instead of appending.
               key: ValueKey('$_status-$_tick'),
+              padding: const EdgeInsets.only(
+                bottom: Tokens.space9 + Tokens.space6,
+              ),
               fetch: (page) => guard.deliveries(
                 page: page,
                 limit: 20,
@@ -118,6 +121,7 @@ class _DeliveriesTabState extends State<DeliveriesTab> {
                   ? 'Register a courier when one arrives, then the resident decides.'
                   : 'Switch the filter to see the rest of the register.',
               itemBuilder: (context, d, _) => _DeliveryRow(
+                key: ValueKey(d.id),
                 delivery: d,
                 onAction: () => setState(() => _tick++),
               ),
@@ -177,7 +181,11 @@ class _Chip extends StatelessWidget {
 
 /// One row of the register, with the action its status allows.
 class _DeliveryRow extends StatefulWidget {
-  const _DeliveryRow({required this.delivery, required this.onAction});
+  const _DeliveryRow({
+    super.key,
+    required this.delivery,
+    required this.onAction,
+  });
   final Delivery delivery;
   final VoidCallback onAction;
 
@@ -189,6 +197,7 @@ class _DeliveryRowState extends State<_DeliveryRow> {
   bool _busy = false;
 
   Future<void> _run(Future<void> Function() action, String ok) async {
+    if (!mounted || _busy) return;
     setState(() => _busy = true);
     try {
       await action();
@@ -208,7 +217,7 @@ class _DeliveryRowState extends State<_DeliveryRow> {
       hint: 'Collection OTP from the resident',
       confirm: 'Hand over',
     );
-    if (otp == null || otp.trim().isEmpty) return;
+    if (otp == null || !mounted) return;
     await _run(
       () => AppServices.instance.guard.handOver(
         widget.delivery.id,
@@ -218,37 +227,14 @@ class _DeliveryRowState extends State<_DeliveryRow> {
     );
   }
 
-  Future<void> _deny() async {
-    final reason = await _promptFor(
-      title: 'Refuse the delivery',
-      hint: 'Why is it refused?',
-      confirm: 'Refuse',
-      destructive: true,
-    );
-    if (reason == null) return;
-    await _run(
-      () => AppServices.instance.guard.denyEntry(
-        widget.delivery.id,
-        reason: reason.isEmpty ? null : reason,
-      ),
-      'Refused.',
-    );
-  }
-
   Future<String?> _promptFor({
     required String title,
     required String hint,
     required String confirm,
-    bool destructive = false,
   }) {
     return showDialog<String>(
       context: context,
-      builder: (ctx) => _Prompt(
-        title: title,
-        hint: hint,
-        confirm: confirm,
-        destructive: destructive,
-      ),
+      builder: (ctx) => _Prompt(title: title, hint: hint, confirm: confirm),
     );
   }
 
@@ -323,11 +309,10 @@ class _DeliveryRowState extends State<_DeliveryRow> {
               spacing: Tokens.space2,
               runSpacing: Tokens.space2,
               children: [
-                // A waiting parcel can be allowed in, or left at the gate.
-                if (waiting) ...[
+                if (waiting)
                   _Action(
-                    label: 'Allow entry',
-                    icon: Icons2.success,
+                    label: 'Re-notify resident',
+                    icon: Icons2.notifications,
                     onTap: () => _run(
                       () => AppServices.instance.guard.requestDeliveryApproval(
                         d.id,
@@ -335,6 +320,7 @@ class _DeliveryRowState extends State<_DeliveryRow> {
                       'The resident has been asked again.',
                     ),
                   ),
+                if (d.canLeaveAtGate)
                   _Action(
                     label: 'Leave at gate',
                     icon: Icons2.gate,
@@ -343,8 +329,7 @@ class _DeliveryRowState extends State<_DeliveryRow> {
                       'Kept at the gate. The resident needs the OTP to collect.',
                     ),
                   ),
-                ],
-                if (d.status == DeliveryStatusValue.approved) ...[
+                if (d.canEnter)
                   _Action(
                     label: 'Record entry',
                     icon: Icons2.gate,
@@ -354,7 +339,6 @@ class _DeliveryRowState extends State<_DeliveryRow> {
                       'Entry recorded.',
                     ),
                   ),
-                ],
                 if (d.status == DeliveryStatusValue.leftAtGate)
                   _Action(
                     label: 'Hand over',
@@ -370,15 +354,6 @@ class _DeliveryRowState extends State<_DeliveryRow> {
                       'Exit recorded.',
                     ),
                   ),
-                if (waiting ||
-                    d.status == DeliveryStatusValue.approved ||
-                    d.status == DeliveryStatusValue.entered)
-                  _Action(
-                    label: 'Refuse',
-                    icon: Icons2.close,
-                    destructive: true,
-                    onTap: _deny,
-                  ),
               ],
             ),
         ],
@@ -388,21 +363,15 @@ class _DeliveryRowState extends State<_DeliveryRow> {
 }
 
 class _Action extends StatelessWidget {
-  const _Action({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    this.destructive = false,
-  });
+  const _Action({required this.label, required this.icon, required this.onTap});
 
   final String label;
   final IconData icon;
   final VoidCallback onTap;
-  final bool destructive;
 
   @override
   Widget build(BuildContext context) {
-    final color = destructive ? Tokens.danger : Tokens.accent;
+    final color = Tokens.accent;
     return Semantics(
       button: true,
       child: InkResponse(
@@ -414,7 +383,7 @@ class _Action extends StatelessWidget {
             vertical: Tokens.space2,
           ),
           decoration: BoxDecoration(
-            color: destructive ? Tokens.dangerTint : Tokens.accentTint,
+            color: Tokens.accentTint,
             borderRadius: BorderRadius.circular(Tokens.radiusSm),
             border: Border.all(color: color.withValues(alpha: 0.3)),
           ),
@@ -446,13 +415,11 @@ class _Prompt extends StatefulWidget {
     required this.title,
     required this.hint,
     required this.confirm,
-    this.destructive = false,
   });
 
   final String title;
   final String hint;
   final String confirm;
-  final bool destructive;
 
   @override
   State<_Prompt> createState() => _PromptState();
@@ -483,6 +450,12 @@ class _PromptState extends State<_Prompt> {
       content: TextField(
         controller: _controller,
         autofocus: true,
+        keyboardType: TextInputType.number,
+        inputFormatters: [
+          FilteringTextInputFormatter.digitsOnly,
+          LengthLimitingTextInputFormatter(6),
+        ],
+        onChanged: (_) => setState(() {}),
         decoration: InputDecoration(hintText: widget.hint),
       ),
       actions: [
@@ -491,10 +464,10 @@ class _PromptState extends State<_Prompt> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
-          style: FilledButton.styleFrom(
-            backgroundColor: widget.destructive ? Tokens.danger : Tokens.accent,
-          ),
+          onPressed: _controller.text.length == 6
+              ? () => Navigator.of(context).pop(_controller.text)
+              : null,
+          style: FilledButton.styleFrom(backgroundColor: Tokens.accent),
           child: Text(widget.confirm),
         ),
       ],

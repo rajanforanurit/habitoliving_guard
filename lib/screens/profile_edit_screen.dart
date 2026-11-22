@@ -40,9 +40,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
   Future<void> _load() async {
     try {
-      final profile = await AppServices.instance.resident.profile();
+      final profile = await AppServices.instance.guard.profile();
       if (!mounted) return;
       setState(() {
+        _error = null;
         _name.text = asString(profile['name']);
         _email.text = asStringOrNull(profile['email']) ?? '';
         _loading = false;
@@ -91,7 +92,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         );
         body['avatarFileId'] = id;
       }
-      await AppServices.instance.resident.updateProfile(body);
+      await AppServices.instance.guard.updateProfile(body);
       // The session carries the name for the whole app; refresh it so every
       // initial-based avatar and greeting updates immediately.
       await AppServices.instance.auth.refreshIdentity();
@@ -179,7 +180,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                         ),
                         child: AppIcon(
                           Icons2.camera,
-                          size: 14,
+                          size: 12.9,
                           color: Tokens.accentOn,
                         ),
                       ),

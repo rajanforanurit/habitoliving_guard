@@ -14,6 +14,7 @@ import 'package:habitoliving_shared/services/session.dart';
 import 'package:habitoliving_shared/ui/tokens.dart';
 import 'package:habitoliving_shared/ui/typography.dart';
 import 'screens/auth_gate.dart';
+
 // In-app updater: disabled for now. Re-enable by uncommenting the import and
 // the UpdateBanner mount below (search for "updater").
 // import 'updates/update_banner.dart';
@@ -34,11 +35,7 @@ class HabitoApp extends StatefulWidget {
 }
 
 class _HabitoAppState extends State<HabitoApp> {
-  GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
-
-  /// The brightness the current navigator was built for. A flip rebuilds the
-  /// navigator key, and with it every pushed route.
-  bool? _navDark;
+  final _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -107,19 +104,8 @@ class _HabitoAppState extends State<HabitoApp> {
         mode == ThemeMode.dark ||
         (mode == ThemeMode.system && brightness == Brightness.dark);
 
-    // Resolve the colour palette before anything below reads a colour token.
-    //
-    // A theme flip has to rebuild the routes as well as the shell. Reparenting
-    // MaterialApp through its ValueKey rebuilds the shell, but the Navigator is
-    // held by a GlobalKey: it keeps its route entries and the widgets that were
-    // pushed onto it, so a screen opened before the switch kept painting with
-    // the old palette (a dark app with a light panel in the middle of it).
-    // Re-keying the navigator forces every route to be rebuilt too.
-    if (_navDark != isDark) {
-      _navDark = isDark;
-      _navigatorKey = GlobalKey<NavigatorState>();
-      Tokens.apply(isDark ? Palette.dark : Palette.light);
-    }
+    // Keep routes mounted when the OS or the guard changes the theme.
+    Tokens.apply(isDark ? Palette.dark : Palette.light);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
@@ -131,9 +117,6 @@ class _HabitoAppState extends State<HabitoApp> {
             : Brightness.dark,
       ),
       child: MaterialApp(
-        // Keyed on the brightness: the tree is rebuilt from scratch when the
-        // theme flips, which is what makes token-driven colours update.
-        key: ValueKey(isDark),
         navigatorKey: _navigatorKey,
         title: 'Habito Living',
         debugShowCheckedModeBanner: false,
@@ -165,6 +148,8 @@ class _HabitoAppState extends State<HabitoApp> {
   ThemeData _materialTheme(bool isDark) {
     final base = isDark ? ThemeData.dark() : ThemeData.light();
     return base.copyWith(
+      iconTheme: base.iconTheme.copyWith(size: 22),
+      textTheme: base.textTheme.apply(fontSizeFactor: .92),
       scaffoldBackgroundColor: isDark
           ? Tokens.backgroundDark
           : Tokens.background,

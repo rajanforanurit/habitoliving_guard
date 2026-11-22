@@ -497,7 +497,7 @@ class _TodayPanel extends StatelessWidget {
                   'RECENT MOVEMENT',
                   style: TextStyle(
                     fontFamily: Tokens.fontFamily,
-                    fontSize: 10,
+                    fontSize: 9.2,
                     fontWeight: FontWeight.w700,
                     color: Tokens.inkFaint,
                     letterSpacing: 0.8,

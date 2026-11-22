@@ -29,14 +29,10 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
   String? _error;
 
   static final _types = <(String, String)>[
-    ('SECURITY', 'Security'),
-    ('MEDICAL', 'Medical'),
-    ('FIRE', 'Fire'),
-    ('ELECTRICAL', 'Electrical'),
-    ('PLUMBING', 'Plumbing'),
-    ('NOISE', 'Noise'),
-    ('ARGUMENT', 'Argument'),
-    ('UNAUTHORIZED', 'Unauthorised entry'),
+    ('SUSPICIOUS_ACTIVITY', 'Suspicious activity'),
+    ('THEFT', 'Theft'),
+    ('ALTERCATION', 'Altercation'),
+    ('TRESPASS', 'Unauthorised entry'),
     ('DAMAGE', 'Damage'),
     ('OTHER', 'Other'),
   ];

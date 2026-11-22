@@ -306,7 +306,7 @@ class _Brand extends StatelessWidget {
             'H',
             style: TextStyle(
               fontFamily: Tokens.fontFamilyFigure,
-              fontSize: 22,
+              fontSize: 20.2,
               fontWeight: FontWeight.w700,
               color: Tokens.accentOn,
             ),

@@ -4,6 +4,12 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Scan a visitor's QR pass and take visitor photos at the gate.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Talk to residents and staff during in-app calls.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Attach a visitor photo from the gallery when the camera is unavailable.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

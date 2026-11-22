@@ -319,8 +319,8 @@ class Visitor {
       scheduledAt: asDateOrNull(
         json['scheduledAt'] ?? json['validFrom'] ?? json['createdAt'],
       ),
-      checkedInAt: asDateOrNull(json['checkedInAt']),
-      checkedOutAt: asDateOrNull(json['checkedOutAt']),
+      checkedInAt: asDateOrNull(json['entryAt'] ?? json['checkedInAt']),
+      checkedOutAt: asDateOrNull(json['exitAt'] ?? json['checkedOutAt']),
       passCode: asStringOrNull(json['passCode'] ?? json['code']),
       vehicleNumber: asStringOrNull(json['vehicleNumber']),
       company: asStringOrNull(json['company']),
@@ -430,6 +430,7 @@ class Delivery {
     this.arrivedAt,
     this.decidedAt,
     this.note,
+    this.leaveAtGate = false,
   });
 
   factory Delivery.fromJson(Map<String, dynamic> json) {
@@ -448,6 +449,7 @@ class Delivery {
       arrivedAt: asDateOrNull(json['arrivedAt'] ?? json['createdAt']),
       decidedAt: asDateOrNull(json['decidedAt']),
       note: asStringOrNull(json['note']),
+      leaveAtGate: asBool(json['leaveAtGate']),
     );
   }
 
@@ -459,8 +461,12 @@ class Delivery {
   final DateTime? arrivedAt;
   final DateTime? decidedAt;
   final String? note;
+  final bool leaveAtGate;
 
   bool get isWaiting => status == DeliveryStatusValue.pendingApproval;
+  bool get canLeaveAtGate =>
+      status == DeliveryStatusValue.approved && leaveAtGate;
+  bool get canEnter => status == DeliveryStatusValue.approved && !leaveAtGate;
 
   static DeliveryStatusValue _deliveryStatus(String raw) =>
       switch (raw.toUpperCase()) {
@@ -1525,7 +1531,7 @@ class LostFoundItem {
     status: humanize(asString(json['status'], fallback: 'OPEN')),
     kind: humanize(asString(json['type'] ?? json['kind'], fallback: 'LOST')),
     description: asStringOrNull(json['description']),
-    location: asStringOrNull(json['location']),
+    location: asStringOrNull(json['locationFound'] ?? json['location']),
     createdAt: asDateOrNull(json['createdAt']),
     reportedBy: asStringOrNull(json['reportedByName']),
   );

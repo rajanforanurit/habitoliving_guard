@@ -125,14 +125,14 @@ class Tokens {
   /// face is vendored, and the system one is the right default for codes.
   static const String fontMono = 'monospace';
 
-  static const double typeXs = 12;
-  static const double typeSm = 13;
-  static const double typeBase = 15;
-  static const double typeMd = 17;
-  static const double typeLg = 20;
-  static const double typeXl = 24;
-  static const double type2Xl = 30;
-  static const double type3Xl = 36;
+  static const double typeXs = 11.04;
+  static const double typeSm = 11.96;
+  static const double typeBase = 13.8;
+  static const double typeMd = 15.64;
+  static const double typeLg = 18.4;
+  static const double typeXl = 22.08;
+  static const double type2Xl = 27.6;
+  static const double type3Xl = 33.12;
 
   // --------------------------------------------------------- component sizes
   static const double controlHeight = 44; // inputs, buttons

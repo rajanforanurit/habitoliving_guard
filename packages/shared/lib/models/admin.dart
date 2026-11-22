@@ -790,9 +790,15 @@ class ExpectedHelper {
     return ExpectedHelper(
       id: asString(json['id'] ?? json['assignmentId']),
       name: asString(json['name'], fallback: 'Helper'),
-      type: humanize(asString(json['type'], fallback: 'MAID')),
+      type: humanize(
+        asString(json['helpType'] ?? json['type'], fallback: 'OTHER'),
+      ),
       phone: asStringOrNull(json['phone'] ?? json['mobile']),
-      flatLabel: asStringOrNull(flat?['label'] ?? json['flatLabel']),
+      flatLabel: asStringOrNull(
+        flat?['label'] ??
+            json['flatLabel'] ??
+            asList(json['flats']).whereType<String>().join(', '),
+      ),
       expectedAt: asDateOrNull(json['expectedAt'] ?? json['date']),
       checkedIn: asBool(json['checkedIn']),
     );

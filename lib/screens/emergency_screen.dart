@@ -13,16 +13,7 @@ import 'package:habitoliving_shared/ui/widgets/states.dart';
 import 'package:habitoliving_shared/ui/widgets/status.dart';
 import '../app.dart';
 
-/// Emergency: the screen that must work first.
-///
-/// Two things are true of an emergency screen:
-///   1. It works offline-ish — contacts come from a cached copy as well as the
-///      network, because a panic button that needs a round trip is not one.
-///   2. It is one tap to call. No confirmation dialog: a resident in an
-///      emergency does not need to confirm that they meant it.
-///
-/// The panic alert is a separate, deliberate action with a confirmation, because
-/// it pages the whole security team.
+/// Society emergency contacts, the guard's incident reports and alert action.
 class EmergencyScreen extends StatefulWidget {
   const EmergencyScreen({super.key});
 
@@ -40,7 +31,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
   }
 
   Future<void> _fetch() async {
-    final api = AppServices.instance.resident;
+    final api = AppServices.instance.guard;
     final results = await Future.wait([
       api.emergencyContacts(),
       api.incidents(limit: 5),
@@ -54,14 +45,14 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
 
   List<EmergencyContact> _contacts = const [];
   PageResult<Incident>? _incidents;
-  Object? _error;
+  bool _alerting = false;
 
   Future<void> _refresh() async {
+    setState(() => _load = _fetch());
     try {
-      await _fetch();
-      if (mounted) setState(() => _error = null);
-    } catch (e) {
-      if (mounted) setState(() => _error = e);
+      await _load;
+    } catch (_) {
+      // The FutureBuilder presents the error and retry action.
     }
   }
 
@@ -70,7 +61,10 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
     if (number.isEmpty) return;
     final uri = Uri(scheme: 'tel', path: number);
     try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        showMessage(context, 'Could not open the phone dialer.', error: true);
+      }
     } catch (e) {
       if (mounted) {
         showMessage(context, 'Could not start the call: $e', error: true);
@@ -83,20 +77,24 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
       context,
       title: 'Raise a panic alert?',
       message:
-          'Security and the society admin are alerted immediately, with '
-          'your flat and the time. Only use this if you need help now.',
+          'The society admin and other guards are alerted immediately. '
+          'Use this when you need help now.',
       confirmLabel: 'Send alert',
     );
-    if (ok != true) return;
+    if (ok != true || !mounted || _alerting) return;
+    setState(() => _alerting = true);
     try {
-      await AppServices.instance.resident.raisePanic(
-        message: 'Panic alert raised from the app',
+      await AppServices.instance.guard.raiseAlert(
+        type: 'SECURITY',
+        message: 'Panic alert raised by the guard',
       );
-      if (!mounted) return;
-      showMessage(context, 'Alert sent. Security has been notified.');
-      await _refresh();
+      if (mounted) {
+        showMessage(context, 'Alert sent to the admin and other guards.');
+      }
     } catch (e) {
       if (mounted) showMessage(context, '$e', error: true);
+    } finally {
+      if (mounted) setState(() => _alerting = false);
     }
   }
 
@@ -110,20 +108,23 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
       body: FutureBuilder<void>(
         future: _load,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              _contacts.isEmpty &&
+              _incidents == null) {
             return const LoadingPage();
           }
-          if (_error != null && _contacts.isEmpty) {
-            return ErrorState(message: '$_error', onRetry: _refresh);
+          if (snapshot.hasError && _contacts.isEmpty && _incidents == null) {
+            return ErrorState(message: '${snapshot.error}', onRetry: _refresh);
           }
           return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.only(
               left: Tokens.gutter,
               right: Tokens.gutter,
               bottom: kScreenBottomPadding,
             ),
             children: [
-              _PanicCard(onPressed: _panic),
+              _PanicCard(onPressed: _alerting ? null : _panic),
               const SectionLabel('Call now'),
               const SizedBox(height: Tokens.space2),
               if (_contacts.isEmpty)
@@ -175,7 +176,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
 /// The panic button. Full width, danger colour, no icon that looks friendly.
 class _PanicCard extends StatelessWidget {
   const _PanicCard({required this.onPressed});
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {

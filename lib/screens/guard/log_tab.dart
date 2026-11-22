@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../app.dart';
 import 'package:habitoliving_shared/models/resident.dart';
-import 'package:habitoliving_shared/models/admin.dart';
 import 'package:habitoliving_shared/services/app_services.dart';
 import 'package:habitoliving_shared/services/format.dart';
 import 'package:habitoliving_shared/ui/icons.dart';
@@ -11,6 +10,7 @@ import 'package:habitoliving_shared/ui/widgets/app_scaffold.dart';
 import 'package:habitoliving_shared/ui/widgets/primitives.dart';
 import 'package:habitoliving_shared/ui/widgets/states.dart';
 import 'package:habitoliving_shared/ui/widgets/status.dart';
+import 'gate_flows.dart';
 
 /// The shift log: everything that happened today at this gate, in one place.
 ///
@@ -18,7 +18,9 @@ import 'package:habitoliving_shared/ui/widgets/status.dart';
 /// who is inside, who is expected, and what went wrong. Each is a separate
 /// fetch so one slow call does not blank the other two.
 class LogTab extends StatefulWidget {
-  const LogTab({super.key});
+  const LogTab({super.key, this.active = true});
+
+  final bool active;
 
   @override
   State<LogTab> createState() => _LogTabState();
@@ -28,7 +30,7 @@ class _LogTabState extends State<LogTab> {
   late Future<List<Visitor>> _inside;
   late Future<List<Visitor>> _history;
   late Future<List<Visitor>> _expected;
-  late Future<GuardDashboard> _dashboard;
+  late Future<int> _today;
 
   @override
   void initState() {
@@ -36,22 +38,38 @@ class _LogTabState extends State<LogTab> {
     _reload();
   }
 
+  @override
+  void didUpdateWidget(covariant LogTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) _reload();
+  }
+
   void _reload() {
     final guard = AppServices.instance.guard;
     _inside = guard.activeVisitors();
     _history = guard.visitors(limit: 30).then((p) => p.items);
     _expected = guard.expectedVisitors();
-    _dashboard = guard.dashboard();
+    _today = guard.dashboard().then((d) => d.todayVisitors + d.todayDeliveries);
   }
 
   Future<void> _pull() async {
     _reload();
     setState(() {});
     try {
-      await Future.wait([_inside, _history, _expected, _dashboard]);
+      await Future.wait([_inside, _history, _expected, _today]);
     } catch (e) {
       if (mounted) showMessage(context, '$e', error: true);
     }
+  }
+
+  void _openVisitor(Visitor visitor) {
+    showVisitorGateAction(
+      context,
+      visitor,
+      onChanged: () {
+        if (mounted) setState(_reload);
+      },
+    );
   }
 
   @override
@@ -60,71 +78,57 @@ class _LogTabState extends State<LogTab> {
       title: 'Shift log',
       subtitle: 'What happened today',
       onRefresh: _pull,
-      body: RefreshIndicator(
-        onRefresh: _pull,
-        color: Tokens.accent,
-        child: ListView(
-          padding: EdgeInsets.only(bottom: Tokens.space6),
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                Tokens.space4,
-                0,
-                Tokens.space4,
-                Tokens.space3,
-              ),
-              child: Text(
-                'Shift handed over',
-                style: TextStyle(
-                  fontFamily: Tokens.fontFamily,
-                  fontSize: Tokens.typeSm,
-                  fontWeight: FontWeight.w600,
-                  color: Tokens.ink,
-                ),
+      body: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.only(bottom: Tokens.space6),
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              Tokens.space4,
+              0,
+              Tokens.space4,
+              Tokens.space3,
+            ),
+            child: Text(
+              'Shift handed over',
+              style: TextStyle(
+                fontFamily: Tokens.fontFamily,
+                fontSize: Tokens.typeSm,
+                fontWeight: FontWeight.w600,
+                color: Tokens.ink,
               ),
             ),
-            _SummaryPanel(
-              inside: _inside,
-              expected: _expected,
-              today: _dashboard.then(
-                (d) => d.todayVisitors + d.todayDeliveries,
-              ),
-            ),
+          ),
+          _SummaryPanel(inside: _inside, expected: _expected, today: _today),
 
-            const SizedBox(height: Tokens.space6),
-            const _SectionHeader(icon: Icons2.gate, title: 'Inside right now'),
-            _VisitorsPanel(
-              future: _inside,
-              emptyTitle: 'Nobody inside',
-              emptyMessage:
-                  'Visitors cleared to enter stay listed here until they leave.',
-            ),
+          const SizedBox(height: Tokens.space6),
+          const _SectionHeader(icon: Icons2.gate, title: 'Inside right now'),
+          _VisitorsPanel(
+            future: _inside,
+            onAction: _openVisitor,
+            emptyTitle: 'Nobody inside',
+            emptyMessage:
+                'Visitors cleared to enter stay listed here until they leave.',
+          ),
 
-            const SizedBox(height: Tokens.space6),
-            const _SectionHeader(
-              icon: Icons2.visitors,
-              title: 'Expected today',
-            ),
-            _VisitorsPanel(
-              future: _expected,
-              emptyTitle: 'Nobody expected',
-              emptyMessage:
-                  'Residents who issued a pass for today appear here.',
-            ),
+          const SizedBox(height: Tokens.space6),
+          const _SectionHeader(icon: Icons2.visitors, title: 'Expected today'),
+          _VisitorsPanel(
+            future: _expected,
+            emptyTitle: 'Nobody expected',
+            emptyMessage: 'Residents who issued a pass for today appear here.',
+          ),
 
-            const SizedBox(height: Tokens.space6),
-            const _SectionHeader(
-              icon: Icons2.reports,
-              title: 'Recent movement',
-            ),
-            _VisitorsPanel(
-              future: _history,
-              emptyTitle: 'No movement logged yet',
-              emptyMessage:
-                  'Every entry, exit, denial and registration lands here.',
-            ),
-          ],
-        ),
+          const SizedBox(height: Tokens.space6),
+          const _SectionHeader(icon: Icons2.reports, title: 'Recent movement'),
+          _VisitorsPanel(
+            future: _history,
+            onAction: _openVisitor,
+            emptyTitle: 'No movement logged yet',
+            emptyMessage:
+                'Every entry, exit, denial and registration lands here.',
+          ),
+        ],
       ),
     );
   }
@@ -210,7 +214,7 @@ class _SummaryPanel extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      AppIcon(Icons2.reports, size: 14, color: Tokens.inkFaint),
+                      AppIcon(Icons2.reports, size: 12.9, color: Tokens.inkFaint),
                       SizedBox(width: 4),
                       Text(
                         'Today',
@@ -274,7 +278,7 @@ class _Count<T> extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                AppIcon(icon, size: 14, color: Tokens.inkFaint),
+                AppIcon(icon, size: 12.9, color: Tokens.inkFaint),
                 SizedBox(width: 4),
                 Text(
                   label,
@@ -299,11 +303,13 @@ class _VisitorsPanel extends StatelessWidget {
     required this.future,
     required this.emptyTitle,
     required this.emptyMessage,
+    this.onAction,
   });
 
   final Future<List<Visitor>> future;
   final String emptyTitle;
   final String emptyMessage;
+  final ValueChanged<Visitor>? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -312,7 +318,9 @@ class _VisitorsPanel extends StatelessWidget {
       child: FutureBuilder<List<Visitor>>(
         future: future,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              !snapshot.hasData &&
+              !snapshot.hasError) {
             return Padding(
               padding: EdgeInsets.all(Tokens.space4),
               child: LinearProgressIndicator(
@@ -356,6 +364,12 @@ class _VisitorsPanel extends StatelessWidget {
                     items[i].status.name,
                     domain: StatusDomain.visitor,
                   ),
+                  onTap:
+                      onAction != null &&
+                          (items[i].isOnPremises ||
+                              items[i].status == VisitorStatusValue.approved)
+                      ? () => onAction!(items[i])
+                      : null,
                 ),
               ],
             ],

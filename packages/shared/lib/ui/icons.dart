@@ -134,14 +134,14 @@ class Icons2 {
 class IconSize {
   IconSize._();
 
-  static const double inline = 16;
-  static const double row = 18;
-  static const double header = 20;
-  static const double hero = 24;
-  static const double empty = 32;
+  static const double inline = 14.72;
+  static const double row = 16.56;
+  static const double header = 18.4;
+  static const double hero = 22.08;
+  static const double empty = 29.44;
 
   /// Bottom navigation: 22 reads as tappable without crowding the label.
-  static const double nav = 22;
+  static const double nav = 20.24;
 }
 
 /// Default icon colour for chrome: the muted ink, so icons sit behind the text.

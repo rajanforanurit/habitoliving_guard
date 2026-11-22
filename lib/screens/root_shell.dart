@@ -51,7 +51,7 @@ class _WrongAppScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(Icons2.guard, size: 48, color: Tokens.accent),
+              Icon(Icons2.guard, size: 44.2, color: Tokens.accent),
               const SizedBox(height: Tokens.space4),
               Text(
                 'Wrong app for this account',

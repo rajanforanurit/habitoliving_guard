@@ -3,9 +3,10 @@ import 'dart:async';
 import '../../models/admin.dart';
 import '../../models/json.dart';
 import '../../models/resident.dart';
+import '../../models/society.dart';
 import '../api_client.dart';
 
-/// Guard API client: the 32 routes under `/guard`.
+/// Guard API client for routes under `/guard`.
 ///
 /// The guard's job at the gate is fast lookup and clear decisions, so this
 /// client keeps those actions one call each: lookup a flat, verify a pass,
@@ -13,6 +14,18 @@ import '../api_client.dart';
 class GuardApi {
   GuardApi(this._api);
   final ApiClient _api;
+
+  Future<Map<String, dynamic>> profile() async {
+    return reqMap(await _api.get('/guard/profile'), field: 'profile');
+  }
+
+  Future<void> updateProfile(Map<String, dynamic> body) async {
+    await _api.patch('/guard/profile', body: body);
+  }
+
+  Future<void> saveNotificationPreferences(Map<String, bool> prefs) async {
+    await _api.put('/guard/notification-preferences', body: prefs);
+  }
 
   /// Today's briefing: expected visitors, pending approvals, active alerts and
   /// the assigned gate.
@@ -34,9 +47,18 @@ class GuardApi {
   Future<List<Map<String, dynamic>>> lookupFlat(String query) async {
     final data = await _api.get(
       '/guard/flats/lookup',
-      query: {'q': query, if (query.trim().isNotEmpty) 'search': query.trim()},
+      query: {'q': query.trim(), 'limit': '15'},
     );
     return asMapList(data);
+  }
+
+  /// The society property layout: towers and the flats inside each tower.
+  ///
+  /// This is the guard's only read of the society structure; it intentionally
+  /// carries unit IDs and labels.
+  Future<SocietyPropertyInfo> societyInfo() async {
+    final data = await _api.get('/guard/society-info');
+    return SocietyPropertyInfo.fromJson(reqMap(data, field: 'societyInfo'));
   }
 
   /// Search visitor records (history and current).
@@ -73,7 +95,9 @@ class GuardApi {
   /// Pre-approved visitors expected today.
   Future<List<Visitor>> expectedVisitors() async {
     final data = await _api.get('/guard/visitors/expected');
-    return asMapList(data).map(Visitor.fromJson).toList(growable: false);
+    return asMapList(data)
+        .map((item) => Visitor.fromJson({...item, 'status': 'EXPECTED'}))
+        .toList(growable: false);
   }
 
   /// Register a walk-in visitor and ask the resident to approve.
@@ -81,6 +105,7 @@ class GuardApi {
     required String name,
     required String flatId,
     String? phone,
+    String? visitorType,
     String? purpose,
     String? company,
     String? vehicleNumber,
@@ -91,7 +116,9 @@ class GuardApi {
       body: {
         'name': name,
         'flatId': flatId,
-        if (phone != null && phone.isNotEmpty) 'phone': phone,
+        if (phone != null && phone.isNotEmpty) 'mobile': phone,
+        if (visitorType != null && visitorType.isNotEmpty)
+          'visitorType': visitorType,
         if (purpose != null && purpose.isNotEmpty) 'purpose': purpose,
         if (company != null && company.isNotEmpty) 'company': company,
         if (vehicleNumber != null && vehicleNumber.isNotEmpty)
@@ -104,10 +131,13 @@ class GuardApi {
   }
 
   /// Verify a visitor pass by its OTP code or scanned QR token.
-  Future<Visitor> verifyPass(String code) async {
+  Future<Visitor> verifyPass(String code, {String? qrToken}) async {
     final data = await _api.post(
       '/guard/visitors/verify',
-      body: {'code': code},
+      body: {
+        if (code.isNotEmpty) 'code': code,
+        if (qrToken != null && qrToken.isNotEmpty) 'qrToken': qrToken,
+      },
     );
     return Visitor.fromJson(reqMap(data, field: 'visitor'));
   }
@@ -115,17 +145,18 @@ class GuardApi {
   /// Record an emergency entry (ambulance, fire, police). Bypasses approval.
   Future<Visitor> emergencyEntry({
     required String flatId,
-    required String type,
-    String? name,
-    String? note,
+    required String purpose,
+    required String name,
+    required String reason,
   }) async {
     final data = await _api.post(
       '/guard/visitors/emergency-entry',
       body: {
         'flatId': flatId,
-        'type': type,
-        if (name != null && name.isNotEmpty) 'name': name,
-        if (note != null && note.isNotEmpty) 'note': note,
+        'name': name,
+        'purpose': purpose,
+        'visitorType': 'SERVICE_PROVIDER',
+        'reason': reason,
       },
     );
     return Visitor.fromJson(reqMap(data, field: 'visitor'));
@@ -172,18 +203,38 @@ class GuardApi {
   }
 
   /// Register delivery personnel and notify the resident.
+  ///
+  /// [courier]/[type] are the older call shape and are still accepted so the
+  /// legacy delivery desk keeps working; the gate UI uses [company],
+  /// [agentName] and [deliveryType], which match the backend schema.
   Future<Delivery> registerDelivery({
     required String flatId,
     String? courier,
     String? type,
     String? note,
+    String? company,
+    String? deliveryType,
+    String? agentName,
+    String? agentMobile,
+    String? photoFileId,
   }) async {
+    final resolvedCompany = company ?? courier;
+    final resolvedType = deliveryType ?? type;
+    final resolvedAgent = agentName ?? courier;
     final data = await _api.post(
       '/guard/deliveries',
       body: {
         'flatId': flatId,
-        if (courier != null && courier.isNotEmpty) 'courier': courier,
-        if (type != null && type.isNotEmpty) 'type': type,
+        if (resolvedCompany != null && resolvedCompany.isNotEmpty)
+          'company': resolvedCompany,
+        if (resolvedType != null && resolvedType.isNotEmpty)
+          'deliveryType': resolvedType,
+        if (resolvedAgent != null && resolvedAgent.isNotEmpty)
+          'agentName': resolvedAgent,
+        if (agentMobile != null && agentMobile.isNotEmpty)
+          'agentMobile': agentMobile,
+        if (photoFileId != null && photoFileId.isNotEmpty)
+          'photoFileId': photoFileId,
         if (note != null && note.isNotEmpty) 'note': note,
       },
     );
@@ -227,18 +278,20 @@ class GuardApi {
     return reqMap(data, field: 'helper');
   }
 
-  Future<void> checkInHelper(String assignmentId) async {
-    await _api.post(
+  Future<Map<String, dynamic>> checkInHelper(String code) async {
+    final data = await _api.post(
       '/guard/domestic-help/check-in',
-      body: {'assignmentId': assignmentId},
+      body: {'code': code},
     );
+    return reqMap(data, field: 'helper');
   }
 
-  Future<void> checkOutHelper(String assignmentId) async {
-    await _api.post(
+  Future<Map<String, dynamic>> checkOutHelper(String code) async {
+    final data = await _api.post(
       '/guard/domestic-help/check-out',
-      body: {'assignmentId': assignmentId},
+      body: {'code': code},
     );
+    return reqMap(data, field: 'helper');
   }
 
   /// Verified domestic workers on today's roster.
@@ -248,16 +301,14 @@ class GuardApi {
   }
 
   Future<void> reportUnauthorizedHelper({
-    required String name,
-    String? flatId,
-    String? note,
+    required String description,
+    String? name,
   }) async {
     await _api.post(
       '/guard/domestic-help/unauthorized-report',
       body: {
-        'name': name,
-        if (flatId != null && flatId.isNotEmpty) 'flatId': flatId,
-        if (note != null && note.isNotEmpty) 'note': note,
+        'description': description,
+        if (name != null && name.isNotEmpty) 'name': name,
       },
     );
   }
@@ -322,6 +373,11 @@ class GuardApi {
 
   // -------------------------------------------------------- emergency contacts
 
+  Future<PageResult<Incident>> incidents({int limit = 20}) async {
+    final data = await _api.get('/guard/incidents', query: {'limit': '$limit'});
+    return PageResult.from(data, _api.lastMeta, Incident.fromJson);
+  }
+
   Future<List<EmergencyContact>> emergencyContacts() async {
     final data = await _api.get('/guard/emergency-contacts');
     return asMapList(
@@ -329,16 +385,43 @@ class GuardApi {
     ).map(EmergencyContact.fromJson).toList(growable: false);
   }
 
+  Future<PageResult<ServiceProvider>> helpdesk({int page = 1}) async {
+    final data = await _api.get('/guard/helpdesk', query: {'page': '$page'});
+    return PageResult.from(data, _api.lastMeta, ServiceProvider.fromJson);
+  }
+
+  Future<void> reportLostAndFound({
+    required String type,
+    required String title,
+    required String description,
+    required String location,
+  }) async {
+    await _api.post(
+      '/guard/lost-found',
+      body: {
+        'type': type,
+        'title': title,
+        if (description.isNotEmpty) 'description': description,
+        if (location.isNotEmpty) 'locationFound': location,
+      },
+    );
+  }
+
   // ------------------------------------------------------------ lost & found
 
-  Future<List<Map<String, dynamic>>> lostAndFound({
+  Future<PageResult<LostFoundItem>> lostAndFound({
     int page = 1,
     int limit = 20,
+    String? type,
   }) async {
     final data = await _api.get(
       '/guard/lost-found',
-      query: {'page': '$page', 'limit': '$limit'},
+      query: {
+        'page': '$page',
+        'limit': '$limit',
+        if (type != null) 'type': type,
+      },
     );
-    return asMapList(data);
+    return PageResult.from(data, _api.lastMeta, LostFoundItem.fromJson);
   }
 }

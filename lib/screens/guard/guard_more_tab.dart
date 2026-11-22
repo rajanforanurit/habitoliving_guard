@@ -10,13 +10,26 @@ import '../emergency_screen.dart';
 import '../lost_found_screen.dart';
 import '../notifications_inbox_screen.dart';
 import '../settings_screen.dart';
+import 'alerts_tab.dart';
+import '../calls/call_contacts_screen.dart';
+import 'deliveries_tab.dart';
+import 'domestic_help_screen.dart';
+import 'emergency_entry_screen.dart';
+import 'guard_helpdesk_screen.dart';
 
 /// Guard's More tab: the things a guard reaches for between rounds.
 ///
 /// Ordered by shift reality: emergency numbers first (a guard calls before they
 /// read), then the two reference lists they need at the gate, then the account.
-class GuardMoreTab extends StatelessWidget {
+class GuardMoreTab extends StatefulWidget {
   const GuardMoreTab({super.key});
+
+  @override
+  State<GuardMoreTab> createState() => _GuardMoreTabState();
+}
+
+class _GuardMoreTabState extends State<GuardMoreTab> {
+  late final _gate = AppServices.instance.guard.myGate();
 
   @override
   Widget build(BuildContext context) {
@@ -31,11 +44,14 @@ class GuardMoreTab extends StatelessWidget {
           bottom: kScreenBottomPadding,
         ),
         children: [
-          _ProfileCard(
-            name: session.displayName,
-            mobile: session.identity?.user.mobile,
-            gate: 'On duty',
-            onSettings: () => _go(context, const SettingsScreen()),
+          FutureBuilder(
+            future: _gate,
+            builder: (context, snapshot) => _ProfileCard(
+              name: session.displayName,
+              mobile: session.identity?.user.mobile,
+              gate: snapshot.data ?? 'On duty',
+              onSettings: () => _go(context, const SettingsScreen()),
+            ),
           ),
 
           const SectionLabel('At the gate'),
@@ -48,6 +64,44 @@ class GuardMoreTab extends StatelessWidget {
                   subtitle: 'One tap to call',
                   icon: Icons2.emergency,
                   onTap: () => _go(context, const EmergencyScreen()),
+                ),
+                const Hairline(),
+                ListRow(
+                  title: 'Emergency entry',
+                  icon: Icons2.gate,
+                  onTap: () => _go(context, const EmergencyEntryScreen()),
+                ),
+                const Hairline(),
+                ListRow(
+                  title: 'Domestic help',
+                  icon: Icons2.community,
+                  onTap: () => _go(context, const DomesticHelpScreen()),
+                ),
+                const Hairline(),
+                ListRow(
+                  title: 'Helpdesk directory',
+                  icon: Icons2.phone,
+                  onTap: () => _go(context, const GuardHelpdeskScreen()),
+                ),
+                const Hairline(),
+                ListRow(
+                  title: 'In-app calls',
+                  icon: Icons2.phone,
+                  onTap: () => _go(context, const CallContactsScreen()),
+                ),
+                const Hairline(),
+                ListRow(
+                  title: 'Deliveries',
+                  subtitle: 'The full gate register',
+                  icon: Icons2.deliveries,
+                  onTap: () => _go(context, const DeliveriesTab()),
+                ),
+                const Hairline(),
+                ListRow(
+                  title: 'Active alerts',
+                  subtitle: 'Panic alerts and incidents',
+                  icon: Icons2.incidents,
+                  onTap: () => _go(context, const AlertsTab()),
                 ),
                 const Hairline(),
                 ListRow(
@@ -119,7 +173,7 @@ class _ProfileCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            InitialsAvatar(name: name, size: 44),
+            InitialsAvatar(name: name, size: 40.5),
             SizedBox(width: Tokens.space3),
             Expanded(
               child: Column(
