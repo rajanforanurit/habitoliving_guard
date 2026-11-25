@@ -563,14 +563,13 @@ class _Divider extends StatelessWidget {
 
 class _RecentRow extends StatelessWidget {
   const _RecentRow({required this.row, required this.first});
-  final Map<String, dynamic> row;
+  final GateActivity row;
   final bool first;
 
   @override
   Widget build(BuildContext context) {
-    final name = row['name'] is String ? row['name'] as String : 'Visit';
-    final flat = row['flatLabel'];
-    final status = row['status'];
+    final name = row.name.isEmpty ? 'Visit' : row.name;
+    final flat = row.flatLabel;
     return Padding(
       padding: EdgeInsets.only(top: first ? 0 : Tokens.space2),
       child: Row(
@@ -587,10 +586,14 @@ class _RecentRow extends StatelessWidget {
               ),
             ),
           ),
-          if (status is String && status.isNotEmpty)
+          if (row.status.isNotEmpty)
             StatusBadge.forStatus(
-              status,
-              domain: StatusDomain.visitor,
+              row.status,
+              domain: switch (row.kind) {
+                GateActivityKind.delivery => StatusDomain.delivery,
+                GateActivityKind.maidAttendance => StatusDomain.attendance,
+                GateActivityKind.visitor => StatusDomain.visitor,
+              },
               dot: false,
             ),
         ],

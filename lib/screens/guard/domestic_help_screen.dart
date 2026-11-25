@@ -85,7 +85,12 @@ class _DomesticHelpScreenState extends State<DomesticHelpScreen> {
             ListRow(
               title: asString(helper['name'], fallback: 'Worker'),
               subtitle: [
-                checkedIn ? 'Checked in' : 'Verified',
+                if (checkedIn)
+                  'Checked in'
+                else if (helper['status'] == 'VERIFIED')
+                  'Verified'
+                else
+                  'Ready to check in',
                 ...asMapList(helper['assignedFlats'])
                     .map((f) => asString(f['flatLabel']))
                     .where((label) => label.isNotEmpty),

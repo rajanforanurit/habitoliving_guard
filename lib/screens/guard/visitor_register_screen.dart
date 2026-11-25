@@ -10,6 +10,7 @@ import 'package:habitoliving_shared/ui/spacing.dart';
 import 'package:habitoliving_shared/ui/tokens.dart';
 import 'package:habitoliving_shared/ui/widgets/app_scaffold.dart';
 import 'package:habitoliving_shared/ui/widgets/primitives.dart';
+import 'visitor_camera_screen.dart';
 
 /// Register a walk-in visitor at the gate.
 ///
@@ -89,12 +90,12 @@ class _VisitorRegisterScreenState extends State<VisitorRegisterScreen> {
       _error = null;
     });
     try {
-      final picked = await AppServices.instance.media.fromCameraOrGallery(
-        source,
-        maxSide: 1920,
-        quality: 85,
-      );
-      if (picked == null) return; // the guard cancelled the picker.
+      final picked = source == ImageSource.camera
+          ? await Navigator.of(context).push<PickedFile>(
+              MaterialPageRoute(builder: (_) => const VisitorCameraScreen()),
+            )
+          : await AppServices.instance.media.fromGallery();
+      if (!mounted || picked == null) return;
       // Compress to roughly 100-200 KB before anything touches the network.
       final compressed = await AppServices.instance.media.compressForUpload(
         picked,

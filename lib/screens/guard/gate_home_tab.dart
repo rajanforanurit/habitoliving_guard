@@ -3,15 +3,16 @@ import 'package:flutter/services.dart';
 
 import '../../app.dart';
 import 'package:habitoliving_shared/models/admin.dart';
+import 'package:habitoliving_shared/models/json.dart';
 import 'package:habitoliving_shared/models/resident.dart';
 import 'package:habitoliving_shared/services/app_services.dart';
-import 'package:habitoliving_shared/services/format.dart';
 import 'package:habitoliving_shared/services/socket_service.dart';
+import 'maid_attendance_screen.dart';
 import 'gate_flows.dart';
 import 'gate_home_screen.dart';
-import 'raise_alert_screen.dart';
+import 'guard_profile_screen.dart';
+import '../notifications_inbox_screen.dart';
 import 'tower_flat_selector.dart';
-import '../settings_screen.dart';
 
 /// The Gate tab's live content.
 ///
@@ -20,15 +21,7 @@ import '../settings_screen.dart';
 /// counts, the guard identity, and the socket subscriptions that keep them
 /// fresh while the guard is on shift.
 class GateHomeTab extends StatefulWidget {
-  const GateHomeTab({
-    super.key,
-    required this.selectedTab,
-    required this.onTabSelected,
-    required this.refreshTick,
-  });
-
-  final GateTab selectedTab;
-  final ValueChanged<GateTab> onTabSelected;
+  const GateHomeTab({super.key, required this.refreshTick});
 
   /// Bumped by the shell whenever a flow (register visitor/delivery, verify)
   /// finishes, so the counts reload without a manual pull.
@@ -41,6 +34,9 @@ class GateHomeTab extends StatefulWidget {
 class _GateHomeTabState extends State<GateHomeTab> {
   late Future<GuardDashboard> _dashboard;
   String? _lastDecision;
+
+  /// The guard's own photo id, from `/guard/profile`.
+  String? _avatarFileId;
   final List<void Function()> _unsubscribers = [];
 
   @override
@@ -49,7 +45,24 @@ class _GateHomeTabState extends State<GateHomeTab> {
     AppServices.instance.session.addListener(_onSession);
     widget.refreshTick.addListener(_onRefreshTick);
     _reload();
+    _loadAvatar();
     _subscribe();
+  }
+
+  /// Fetches the guard's profile photo. A missing photo is normal — the header
+  /// falls back to initials — so a failure here is silent.
+  Future<void> _loadAvatar() async {
+    try {
+      final profile = await AppServices.instance.guard.profile();
+      if (!mounted) return;
+      setState(
+        () => _avatarFileId =
+            asStringOrNull(profile['avatarFileId']) ??
+            asStringOrNull(profile['photoFileId']),
+      );
+    } catch (_) {
+      // Nothing to report at the gate over a photo.
+    }
   }
 
   @override
@@ -64,7 +77,9 @@ class _GateHomeTabState extends State<GateHomeTab> {
 
   void _onSession() {
     GateDirectory.clear();
-    if (mounted) _reload();
+    if (!mounted) return;
+    _reload();
+    _loadAvatar();
   }
 
   void _onRefreshTick() {
@@ -82,6 +97,7 @@ class _GateHomeTabState extends State<GateHomeTab> {
       Events.visitorOverstay,
       Events.deliveryArrived,
       Events.deliveryDecision,
+      Events.domesticHelpCheckedIn,
       Events.emergencyAlert,
       Events.emergencyUpdated,
       Events.propertyInfoChanged,
@@ -199,23 +215,14 @@ class _GateHomeTabState extends State<GateHomeTab> {
     );
   }
 
-  Future<void> _openEmergency() async {
-    final raised = await Navigator.of(
+  Future<void> _openProfile() async {
+    await Navigator.of(
       context,
-    ).push<bool>(MaterialPageRoute(builder: (_) => const RaiseAlertScreen()));
-    if (raised == true && mounted) {
-      showMessage(
-        context,
-        'Alert raised. The admin and other guards are notified.',
-      );
-      _reload();
-    }
-  }
-
-  void _openSettings() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+    ).push<void>(MaterialPageRoute(builder: (_) => const GuardProfileScreen()));
+    // The guard may have changed their name or photo in there.
+    if (!mounted) return;
+    _loadAvatar();
+    _reload();
   }
 
   @override
@@ -252,24 +259,27 @@ class _GateHomeTabState extends State<GateHomeTab> {
             }
             final dashboard = snapshot.data ?? GuardDashboard.empty;
             final session = AppServices.instance.session;
-            final mobile = session.identity?.user.mobile;
             return GateHomeScreen(
               embedded: true,
-              selectedTab: widget.selectedTab,
-              onTabSelected: widget.onTabSelected,
               language: gateIsHindi,
               guardName: session.displayName,
-              guardPhone: mobile == null || mobile.trim().isEmpty
-                  ? 'On duty'
-                  : Fmt.phone(mobile),
-              awaiting: dashboard.pendingVisitors + dashboard.pendingDeliveries,
-              inside: dashboard.activeVisitors,
-              expected: dashboard.expectedVisitors,
+              societyName: session.societyName,
+              guardAvatarFileId: _avatarFileId,
+              activities: dashboard.recentActivity,
               onRegisterVisitor: _openVisitor,
               onVerifyPass: _openVerify,
               onDelivery: _openDelivery,
-              onEmergency: _openEmergency,
-              onSettings: _openSettings,
+              onMaidAttendance: () => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => MaidAttendanceScreen(onRecorded: _changed),
+                ),
+              ),
+              onNotifications: () => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => const NotificationsInboxScreen(),
+                ),
+              ),
+              onProfile: _openProfile,
             );
           },
         ),

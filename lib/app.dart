@@ -149,7 +149,10 @@ class _HabitoAppState extends State<HabitoApp> {
     final base = isDark ? ThemeData.dark() : ThemeData.light();
     return base.copyWith(
       iconTheme: base.iconTheme.copyWith(size: 22),
-      textTheme: base.textTheme.apply(fontSizeFactor: .92),
+      // `TextTheme.apply` asserts that every style carries a font size, and the
+      // platform typography can supply an unsized entry — which then fails the
+      // whole app at startup. Scale only the styles that declare a size.
+      textTheme: _scaleText(base.textTheme, .92),
       scaffoldBackgroundColor: isDark
           ? Tokens.backgroundDark
           : Tokens.background,
@@ -163,6 +166,34 @@ class _HabitoAppState extends State<HabitoApp> {
           TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
         },
       ),
+    );
+  }
+
+  /// Multiplies every style that declares a size by [factor].
+  ///
+  /// Styles with no size are returned untouched rather than crashing the
+  /// theme, which is what `TextTheme.apply` does with them.
+  static TextTheme _scaleText(TextTheme theme, double factor) {
+    TextStyle? scale(TextStyle? style) =>
+        (style == null || style.fontSize == null)
+        ? style
+        : style.copyWith(fontSize: style.fontSize! * factor);
+    return theme.copyWith(
+      displayLarge: scale(theme.displayLarge),
+      displayMedium: scale(theme.displayMedium),
+      displaySmall: scale(theme.displaySmall),
+      headlineLarge: scale(theme.headlineLarge),
+      headlineMedium: scale(theme.headlineMedium),
+      headlineSmall: scale(theme.headlineSmall),
+      titleLarge: scale(theme.titleLarge),
+      titleMedium: scale(theme.titleMedium),
+      titleSmall: scale(theme.titleSmall),
+      bodyLarge: scale(theme.bodyLarge),
+      bodyMedium: scale(theme.bodyMedium),
+      bodySmall: scale(theme.bodySmall),
+      labelLarge: scale(theme.labelLarge),
+      labelMedium: scale(theme.labelMedium),
+      labelSmall: scale(theme.labelSmall),
     );
   }
 }

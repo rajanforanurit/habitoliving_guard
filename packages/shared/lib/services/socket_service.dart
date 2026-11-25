@@ -34,6 +34,7 @@ class Events {
   static const visitorOverstay = 'visitor:overstay';
   static const deliveryArrived = 'delivery:arrived';
   static const deliveryDecision = 'delivery:decision';
+  static const domesticHelpCheckedIn = 'domestic-help:checked-in';
   static const chatMessage = 'chat:message';
   static const emergencyAlert = 'emergency:alert';
   static const approvalUpdated = 'approval:updated';
@@ -219,6 +220,7 @@ class SocketService {
     Events.visitorOverstay,
     Events.deliveryArrived,
     Events.deliveryDecision,
+    Events.domesticHelpCheckedIn,
     Events.chatMessage,
     Events.emergencyAlert,
     Events.approvalUpdated,

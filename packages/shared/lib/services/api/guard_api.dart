@@ -269,6 +269,21 @@ class GuardApi {
 
   // ---------------------------------------------------------- domestic help
 
+  Future<({String name, DateTime date, bool alreadyMarked})> markMaidAttendance(
+    String code,
+  ) async {
+    final data = await _api.post(
+      '/guard/domestic-help/attendance',
+      body: {'code': code},
+    );
+    final attendance = reqMap(data, field: 'maidAttendance');
+    return (
+      name: reqString(attendance['name'], field: 'name'),
+      date: DateTime.parse(reqString(attendance['date'], field: 'date')),
+      alreadyMarked: asBool(attendance['alreadyMarked']),
+    );
+  }
+
   /// Verify a domestic worker by their entry code.
   Future<Map<String, dynamic>> lookupHelper(String code) async {
     final data = await _api.post(

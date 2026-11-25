@@ -675,6 +675,153 @@ class ReportSummary {
 
 /// The guard's daily briefing: how much is waiting at the gate right now.
 /// Matches `GET /guard/dashboard` exactly.
+/// One line in the gate's activity feed.
+///
+/// The guard reads this as a sentence ("Delivery approved from A-101 for
+/// Zepto"), so the words are assembled here rather than in the widget. The
+/// same row covers visitors and deliveries because the gate does not think in
+/// tables — it thinks about who just walked in.
+enum GateActivityKind { visitor, delivery, maidAttendance }
+
+class GateActivity {
+  const GateActivity({
+    required this.id,
+    required this.kind,
+    required this.name,
+    required this.status,
+    this.flatLabel,
+    this.company,
+    this.at,
+  });
+
+  factory GateActivity.fromJson(Map<String, dynamic> json) => GateActivity(
+    id: asString(json['id']),
+    kind: switch (asString(json['kind']).toUpperCase()) {
+      'DELIVERY' => GateActivityKind.delivery,
+      'MAID_ATTENDANCE' => GateActivityKind.maidAttendance,
+      _ => GateActivityKind.visitor,
+    },
+    name: asString(json['name'], fallback: 'Visitor'),
+    status: asString(json['status']),
+    flatLabel: asStringOrNull(json['flatLabel']),
+    company: asStringOrNull(json['company']),
+    at: asDateOrNull(json['at']),
+  );
+
+  final String id;
+  final GateActivityKind kind;
+
+  /// The visitor's name, or the delivery agent's.
+  final String name;
+  final String status;
+  final String? flatLabel;
+
+  /// The delivery company — Zepto, Amazon, Swiggy. Null for a visitor.
+  final String? company;
+  final DateTime? at;
+
+  bool get isDelivery => kind == GateActivityKind.delivery;
+  bool get isMaidAttendance => kind == GateActivityKind.maidAttendance;
+
+  /// The readable one-liner. Missing pieces drop out instead of leaving a
+  /// dangling "for" or "from".
+  String sentence({bool hindi = false}) {
+    if (isMaidAttendance) {
+      final maid = name.trim();
+      if (maid.isEmpty) {
+        return hindi ? 'मेड की उपस्थिति दर्ज हुई' : 'Maid attendance recorded';
+      }
+      return hindi
+          ? '$maid की उपस्थिति दर्ज हुई'
+          : 'Maid attendance recorded for $maid';
+    }
+    final flat = (flatLabel ?? '').trim();
+    final verb = _verb(hindi);
+    final buffer = StringBuffer(verb);
+
+    if (isDelivery) {
+      // "Delivery approved from A-101 for Zepto" — the flat is where it went,
+      // the company is who sent it.
+      final who = (company ?? '').trim();
+      if (flat.isNotEmpty) {
+        buffer.write(hindi ? ' $flat, जहाँ से' : ' from $flat');
+      }
+      if (who.isNotEmpty) {
+        buffer.write(hindi ? ' $who के लिए' : ' for $who');
+      }
+      return buffer.toString();
+    }
+
+    // "Visitor approved by A-103 for Ramesh".
+    final who = name.trim();
+    if (flat.isNotEmpty) buffer.write(hindi ? ' $flat द्वारा' : ' by $flat');
+    if (who.isNotEmpty && who != 'Visitor') {
+      buffer.write(hindi ? ' $who को' : ' for $who');
+    }
+    return buffer.toString();
+  }
+
+  String _verb(bool hindi) {
+    final s = status.toUpperCase();
+    if (isDelivery) {
+      if (hindi) {
+        return switch (s) {
+          'APPROVED' => 'डिलीवरी स्वीकृत',
+          'REJECTED' => 'डिलीवरी अस्वीकृत',
+          'ENTERED' => 'डिलीवरी अंदर आई',
+          'EXITED' => 'डिलीवरी बाहर गई',
+          'LEFT_AT_GATE' => 'डिलीवरी गेट पर रखी गई',
+          'COLLECTED' => 'डिलीवरी ले ली गई',
+          _ => 'डिलीवरी दर्ज',
+        };
+      }
+      return switch (s) {
+        'APPROVED' => 'Delivery approved',
+        'REJECTED' => 'Delivery declined',
+        'ENTERED' => 'Delivery entered',
+        'EXITED' => 'Delivery left',
+        'LEFT_AT_GATE' => 'Delivery kept at the gate',
+        'COLLECTED' => 'Delivery collected',
+        'PENDING_APPROVAL' => 'Delivery awaiting approval',
+        _ => 'Delivery registered',
+      };
+    }
+    if (hindi) {
+      return switch (s) {
+        'APPROVED' => 'आगंतुक स्वीकृत',
+        'REJECTED' => 'आगंतुक अस्वीकृत',
+        'DENIED' => 'आगंतुक को रोका गया',
+        'CHECKED_IN' => 'आगंतुक अंदर आया',
+        'CHECKED_OUT' => 'आगंतुक बाहर गया',
+        'CANCELLED' => 'आगंतुक रद्द',
+        'EXPIRED' => 'पास की समय-सीमा समाप्त',
+        'PENDING_APPROVAL' => 'आगंतुक स्वीकृति की प्रतीक्षा में',
+        'EXPECTED' => 'आगंतुक अपेक्षित',
+        _ => 'आगंतुक दर्ज',
+      };
+    }
+    return switch (s) {
+      'APPROVED' => 'Visitor approved',
+      'REJECTED' => 'Visitor declined',
+      'DENIED' => 'Visitor denied entry',
+      'CHECKED_IN' => 'Visitor entered',
+      'CHECKED_OUT' => 'Visitor left',
+      'CANCELLED' => 'Visitor cancelled',
+      'EXPIRED' => 'Pass expired',
+      'PENDING_APPROVAL' => 'Visitor awaiting approval',
+      'EXPECTED' => 'Visitor expected',
+      _ => 'Visitor registered',
+    };
+  }
+
+  /// Whether the line reports something that ended well.
+  bool get isPositive => switch (status.toUpperCase()) {
+    'APPROVED' || 'CHECKED_IN' || 'COLLECTED' || 'LEFT_AT_GATE' => true,
+    'REJECTED' || 'DENIED' || 'EXPIRED' => false,
+    _ => true,
+  };
+}
+
 class GuardDashboard {
   const GuardDashboard({
     this.todayVisitors = 0,
@@ -704,7 +851,9 @@ class GuardDashboard {
       activeAlerts: asInt(
         json['activeEmergencyAlerts'] ?? json['activeAlerts'],
       ),
-      recentActivity: asMapList(json['recentActivity']),
+      recentActivity: asMapList(
+        json['recentActivity'],
+      ).map(GateActivity.fromJson).toList(growable: false),
     );
   }
 
@@ -719,8 +868,8 @@ class GuardDashboard {
   final int activeVisitors;
   final int activeAlerts;
 
-  /// Recent gate movement, newest first: `{flatLabel, name, status, id, …}`.
-  final List<Map<String, dynamic>> recentActivity;
+  /// Recent gate movement, newest first — at most 25 rows from the API.
+  final List<GateActivity> recentActivity;
 
   bool get hasWork =>
       pendingVisitors > 0 || pendingDeliveries > 0 || activeAlerts > 0;
